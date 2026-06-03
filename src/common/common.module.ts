@@ -9,21 +9,22 @@ import { Setting } from 'src/v1/setting/entities/setting.entity';
 import { EmailServiceUtils } from './utils/email-service.utils';
 import { SMSPhoServiceUtils } from './utils/sms-pho-service.utils';
 import { FileUploadService } from './services/file-upload.service';
+import { StartupService } from './services/startup.service';
 
 @Global()
 @Module({
   imports: [TypeOrmModule.forFeature([Setting])],
   providers: [
-    ResponseInterceptor,
     HttpExceptionFilter,
     S3ClientUtils,
     EmailServiceUtils,
     SMSPhoServiceUtils,
     FileUploadService,
+    StartupService,
     { provide: APP_INTERCEPTOR, useClass: PresignedUrlInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
   ],
   exports: [
-    ResponseInterceptor,
     HttpExceptionFilter,
     S3ClientUtils,
     EmailServiceUtils,

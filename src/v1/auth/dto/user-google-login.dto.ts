@@ -3,7 +3,7 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 export class UserGoogleLoginDto {
   @IsString()
   @IsNotEmpty()
-  token: string;
+  token!: string;
 
   @IsString()
   @IsOptional()

@@ -1,6 +1,8 @@
 import { memoryStorage } from 'multer';
 
-export const profileImageInterceptorOptions: Parameters<typeof import('@nestjs/platform-express').FileInterceptor>[1] = {
+export const profileImageInterceptorOptions: Parameters<
+  typeof import('@nestjs/platform-express').FileInterceptor
+>[1] = {
   storage: memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (

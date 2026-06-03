@@ -8,19 +8,16 @@ import {
   BeforeUpdate,
 } from 'typeorm';
 import slugify from 'slugify';
-import { ActionType, Permission } from './permission.entity';
+import { Permission } from './permission.entity';
 import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('modules')
 export class ModuleEntity extends BaseEntity {
   @Column()
-  name: string;
+  name!: string;
 
   @Column({ unique: true })
-  code: string;
-
-  @Column({ type: 'simple-array', default: 'CREATE,READ,UPDATE,DELETE' })
-  allowedActions: ActionType[];
+  code!: string;
 
   @Column({ type: 'uuid', nullable: true })
   parentId?: string;
@@ -32,10 +29,10 @@ export class ModuleEntity extends BaseEntity {
   parent?: ModuleEntity;
 
   @OneToMany(() => ModuleEntity, (module) => module.parent)
-  children: ModuleEntity[];
+  children!: ModuleEntity[];
 
   @OneToMany(() => Permission, (permission) => permission.module)
-  permissions: Permission[];
+  permissions!: Permission[];
 
   @BeforeInsert()
   @BeforeUpdate()

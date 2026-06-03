@@ -1,8 +1,8 @@
 import {
+  CallHandler,
+  ExecutionContext,
   Injectable,
   NestInterceptor,
-  ExecutionContext,
-  CallHandler,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
@@ -33,7 +33,9 @@ export class PresignedUrlInterceptor implements NestInterceptor {
         if (!data) return response;
 
         if (Array.isArray(data)) {
-          await Promise.all(data.map((item) => this.transformFields(item, fields)));
+          await Promise.all(
+            data.map((item) => this.transformFields(item, fields)),
+          );
         } else {
           await this.transformFields(data, fields);
         }

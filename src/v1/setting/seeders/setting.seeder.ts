@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Setting } from '../entities/setting.entity';
@@ -8,6 +9,7 @@ export class SettingSeeder {
   constructor(
     @InjectRepository(Setting)
     private settingRepository: Repository<Setting>,
+    private readonly configService: ConfigService,
   ) {}
 
   async seed() {
@@ -38,7 +40,7 @@ export class SettingSeeder {
       },
       {
         key: 'smtp_from_name',
-        value: process.env.SMTP_FROM_NAME || 'NestJS TypeORM API Starter',
+        value: this.configService.get<string>('SMTP_FROM_NAME', 'NestJS TypeORM API Starter'),
       },
       {
         key: 'smtp_enabled',

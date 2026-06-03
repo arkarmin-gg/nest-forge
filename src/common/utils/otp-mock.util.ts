@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 
-export const DEFAULT_MOCK_OTP_CODE = '000000';
+export const DEFAULT_MOCK_OTP_CODE = '123456';
 
 function parseBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {
@@ -39,5 +39,5 @@ export function isOtpMockEnabled(config: ConfigService): boolean {
 }
 
 export function getMockOtpCode(config: ConfigService): string {
-  return config.get<string>('OTP_MOCK_CODE') || DEFAULT_MOCK_OTP_CODE;
+  return config.get<string>('MOCK_OTP_CODE') || DEFAULT_MOCK_OTP_CODE;
 }

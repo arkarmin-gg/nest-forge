@@ -14,11 +14,11 @@ export class CreateAdminDto {
   @IsNotEmpty({ message: 'Full name is required' })
   @MinLength(2, { message: 'Full name must be at least 2 characters long' })
   @MaxLength(100, { message: 'Full name must not exceed 100 characters' })
-  fullName: string;
+  fullName!: string;
 
   @IsEmail({}, { message: 'Please provide a valid email address' })
   @IsNotEmpty({ message: 'Email is required' })
-  email: string;
+  email!: string;
 
   @IsOptional()
   @IsString({ message: 'Password must be a string' })
@@ -27,7 +27,7 @@ export class CreateAdminDto {
 
   @IsUUID('4', { message: 'Role ID must be a valid UUID' })
   @IsNotEmpty({ message: 'Role ID is required' })
-  roleId: string;
+  roleId!: string;
 
   @IsOptional()
   @Transform(({ value }) => {

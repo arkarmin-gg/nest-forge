@@ -4,28 +4,26 @@ import {
   Post,
   Body,
   Param,
+  ParseUUIDPipe,
   Delete,
   Query,
   UseGuards,
   NotFoundException,
   Patch,
+  HttpCode,
 } from '@nestjs/common';
 import { RoleService } from '../services/role.service';
-import { Role } from '../entities/role.entity';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermissionsGuard } from '../guards/permissions.guard';
 import { RequirePermissions } from '../decorators/permissions.decorator';
 import { PermissionModule } from '../entities/permission.entity';
-import { LogActivity } from 'src/v1/activity-log/decorators/log-activity.decorator';
-import { LogAction } from 'src/v1/activity-log/constants/log-action.enum';
+import { LogActivity } from 'src/v1/log/decorators/log-activity.decorator';
+import { LogAction } from 'src/v1/log/constants/log-action.enum';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
-import { ApiResponse } from 'src/common/interfaces/api-response.interface';
-import { ResponseUtil } from 'src/common/utils/response.util';
 import { FilterRoleDto } from '../dto/filter-role.dto';
 
 @Controller({ path: 'roles', version: '1' })
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
@@ -34,40 +32,12 @@ export class RoleController {
     { module: PermissionModule.ADMIN, permission: 'read' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'read' },
   )
-  async findAll(
-    @Query() filterDto: FilterRoleDto,
-  ): Promise<ApiResponse<Role[]>> {
-    const [result, total] = await this.roleService.findAll(
+  async findAll(@Query() filterDto: FilterRoleDto) {
+    return this.roleService.findAll(
       filterDto.page,
       filterDto.limit,
       filterDto.getAll,
       filterDto.search,
-    );
-
-    if (filterDto.getAll) {
-      return ResponseUtil.success(result, 'All roles retrieved successfully');
-    }
-
-    return ResponseUtil.paginated(
-      result,
-      total,
-      filterDto.page,
-      filterDto.limit,
-      'Roles retrieved successfully',
-    );
-  }
-
-  @Get('permissions')
-  @RequirePermissions(
-    { module: PermissionModule.ADMIN, permission: 'read' },
-    { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'read' },
-  )
-  async findAllPermissions() {
-    const permissions = await this.roleService.findAllPermissions();
-
-    return ResponseUtil.success(
-      permissions,
-      'Permissions retrieved successfully',
     );
   }
 
@@ -76,80 +46,60 @@ export class RoleController {
     { module: PermissionModule.ADMIN, permission: 'read' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'read' },
   )
-  async findOne(@Param('id') id: string): Promise<ApiResponse<Role>> {
+  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     const role = await this.roleService.findOne(id);
-
-    if (!role) {
-      throw new NotFoundException('Role not found');
-    }
-
-    return ResponseUtil.success(role, 'Role retrieved successfully');
+    if (!role) throw new NotFoundException('Role not found');
+    return role;
   }
 
   @Post()
+  @LogActivity({
+    action: LogAction.CREATE,
+    description: 'Admin created a role',
+    resourceType: 'Role',
+  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'create' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'create' },
   )
-  @LogActivity({
-    action: LogAction.CREATE,
-    description: 'Role created successfully',
-    resourceType: 'role',
-    getResourceId: (result: Role) => result.id?.toString(),
-  })
-  async create(
-    @Body() createRoleDto: CreateRoleDto,
-  ): Promise<ApiResponse<Role | null>> {
+  async create(@Body() createRoleDto: CreateRoleDto) {
     const role = await this.roleService.create(createRoleDto);
-    if (!role) {
-      return ResponseUtil.error('Role creation failed');
-    }
-
-    return ResponseUtil.created(role, 'Role created successfully');
+    if (!role) throw new NotFoundException('Role creation failed');
+    return role;
   }
 
   @Patch(':id')
+  @LogActivity({
+    action: LogAction.UPDATE,
+    description: 'Admin updated a role',
+    resourceType: 'Role',
+  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'update' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'update' },
   )
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'Role updated successfully',
-    resourceType: 'role',
-    getResourceId: (result: Role) => result.id?.toString(),
-  })
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() updateRoleDto: UpdateRoleDto,
-  ): Promise<ApiResponse<Role>> {
+  ) {
     const role = await this.roleService.update(id, updateRoleDto);
-
-    if (!role) {
-      throw new NotFoundException('Role not found');
-    }
-
-    return ResponseUtil.updated(role, 'Role updated successfully');
+    if (!role) throw new NotFoundException('Role not found');
+    return role;
   }
 
   @Delete(':id')
+  @HttpCode(200)
+  @LogActivity({
+    action: LogAction.DELETE,
+    description: 'Admin deleted a role',
+    resourceType: 'Role',
+  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'delete' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'delete' },
   )
-  @LogActivity({
-    action: LogAction.DELETE,
-    description: 'Role deleted successfully',
-    resourceType: 'role',
-    getResourceId: (result: Role) => result.id?.toString(),
-  })
-  async remove(@Param('id') id: string): Promise<ApiResponse<null>> {
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     const deleted = await this.roleService.remove(id);
-
-    if (!deleted) {
-      throw new NotFoundException('Role not found');
-    }
-
-    return ResponseUtil.deleted('Role deleted successfully');
+    if (!deleted) throw new NotFoundException('Role not found');
   }
 }

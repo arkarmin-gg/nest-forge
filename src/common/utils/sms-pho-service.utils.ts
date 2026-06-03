@@ -1,16 +1,16 @@
 import {
-  Injectable,
   BadRequestException,
+  Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { nowIso } from './date-time.util';
 import {
   DEFAULT_MOCK_OTP_CODE,
   getMockOtpCode,
   isOtpMockEnabled,
 } from './otp-mock.util';
-import { nowIso } from './date-time.util';
 
 @Injectable()
 export class SMSPhoServiceUtils {
@@ -24,7 +24,7 @@ export class SMSPhoServiceUtils {
 
   /** Mock request ID used when OTP mocks are enabled. */
   static readonly MOCK_OTP = DEFAULT_MOCK_OTP_CODE;
-  static readonly MOCK_REQUEST_ID = 'mock-request-id';
+  static readonly MOCK_REQUEST_ID = DEFAULT_MOCK_OTP_CODE;
 
   constructor(private readonly config: ConfigService) {
     this.mockEnabled = isOtpMockEnabled(config);

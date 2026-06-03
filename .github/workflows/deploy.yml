@@ -1,4 +1,4 @@
-name: Deploy Pann Thee DEV App
+name: Deploy DEV App
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -59,8 +59,8 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-            nvm install 20
-            nvm use 20
+            nvm install 24
+            nvm use 24
 
             # install production dependencies
             npm ci --omit=dev

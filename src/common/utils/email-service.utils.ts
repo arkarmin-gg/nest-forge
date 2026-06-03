@@ -7,7 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { isOtpMockEnabled } from './otp-mock.util';
 import { SMTP_CACHE_TTL_MS as SMTP_TTL } from './date-time.util';
 
-interface SmtpConfig {
+interface SMTPConfig {
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;
@@ -21,7 +21,7 @@ interface SmtpConfig {
 @Injectable()
 export class EmailServiceUtils {
   private readonly logger = new Logger(EmailServiceUtils.name);
-  private smtpConfigCache: SmtpConfig | null = null;
+  private smtpConfigCache: SMTPConfig | null = null;
   private smtpConfigCachedAt = 0;
   private readonly SMTP_CACHE_TTL_MS = SMTP_TTL;
 
@@ -52,9 +52,12 @@ export class EmailServiceUtils {
     });
   }
 
-  private async getSMTPSettings(): Promise<SmtpConfig> {
+  private async getSMTPSettings(): Promise<SMTPConfig> {
     const now = Date.now();
-    if (this.smtpConfigCache && now - this.smtpConfigCachedAt < this.SMTP_CACHE_TTL_MS) {
+    if (
+      this.smtpConfigCache &&
+      now - this.smtpConfigCachedAt < this.SMTP_CACHE_TTL_MS
+    ) {
       return this.smtpConfigCache;
     }
 

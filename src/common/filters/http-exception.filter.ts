@@ -1,13 +1,12 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
-import { QueryFailedError } from 'typeorm';
+import { Request, Response } from 'express';
 import { ResponseUtil } from '../utils/response.util';
 
 interface HttpExceptionResponseObject {
@@ -17,101 +16,52 @@ interface HttpExceptionResponseObject {
   error?: string;
 }
 
-interface PostgresDriverError {
-  code?: string;
-  detail?: string;
-  constraint?: string;
-}
-
-type QueryFailedErrorWithDriver = QueryFailedError & {
-  driverError?: PostgresDriverError;
-};
-
-type RawPostgresError = Error & PostgresDriverError;
-
-@Catch()
+@Catch(HttpException)
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
+  catch(exception: HttpException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
+    const request = ctx.getRequest<Request & { requestId?: string }>();
     const response = ctx.getResponse<Response>();
+    const status = exception.getStatus();
+    const exceptionResponse = exception.getResponse();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
+    const requestId = request.requestId ?? 'unknown';
+    const userId = (request as any).user?.id ?? 'unauthenticated';
+    const clientIp = request.ip ?? 'unknown';
+
+    let message = exception.message;
     let details: unknown = null;
 
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const exceptionResponse = exception.getResponse();
-
-      if (typeof exceptionResponse === 'object') {
-        const responseObj = exceptionResponse as HttpExceptionResponseObject;
-        message = Array.isArray(responseObj.message)
-          ? 'Validation failed'
-          : (responseObj.message ?? exception.message);
-        details = Array.isArray(responseObj.message)
-          ? responseObj.message
-          : (responseObj.details ?? null);
-      } else {
-        message = exceptionResponse as string;
-      }
-    } else if (exception instanceof QueryFailedError) {
-      const driverError = (exception as QueryFailedErrorWithDriver).driverError;
-      if (driverError?.code === '23505') {
-        status = HttpStatus.CONFLICT;
-        const detail = driverError.detail ?? 'Duplicate key value';
-        const parsed = this.parseUniqueConstraintDetail(detail);
-        message = parsed.field
-          ? `${parsed.field} already exists`
-          : 'Duplicate value violates unique constraint';
-        details = {
-          constraint: driverError.constraint,
-          detail,
-          field: parsed.field,
-          value: parsed.value,
-        };
-      } else {
-        message = exception.message;
-      }
-    } else if (this.isRawPostgresError(exception) && exception.code === '23505') {
-      status = HttpStatus.CONFLICT;
-      const detail = exception.detail ?? 'Duplicate key value';
-      const parsed = this.parseUniqueConstraintDetail(detail);
-      message = parsed.field
-        ? `${parsed.field} already exists`
-        : 'Duplicate value violates unique constraint';
-      details = {
-        constraint: exception.constraint,
-        detail,
-        field: parsed.field,
-        value: parsed.value,
-      };
-    } else if (exception instanceof Error) {
-      message = exception.message;
+    if (typeof exceptionResponse === 'object') {
+      const responseObj = exceptionResponse as HttpExceptionResponseObject;
+      message = Array.isArray(responseObj.message)
+        ? 'Validation failed'
+        : (responseObj.message ?? exception.message);
+      details = Array.isArray(responseObj.message)
+        ? responseObj.message
+        : (responseObj.details ?? null);
+    } else if (typeof exceptionResponse === 'string') {
+      message = exceptionResponse;
     }
 
-    this.logger.error(
-      `HTTP Exception: ${message}`,
-      exception instanceof Error ? exception.stack : undefined,
+    const logMethod = status >= 500 ? 'error' : 'warn';
+    this.logger[logMethod](
+      `[${requestId}] ${request.method} ${request.url} ${status} | user:${userId} ip:${clientIp} | ${message}`,
+      status >= 500 ? exception.stack : undefined,
     );
 
-    const errorResponse = ResponseUtil.error(
-      message,
-      status,
-      this.getErrorName(status),
-      details,
-    );
-
-    response.status(status).json(errorResponse);
-  }
-
-  private isRawPostgresError(err: unknown): err is RawPostgresError {
-    return (
-      err instanceof Error &&
-      'code' in err &&
-      typeof (err as Record<string, unknown>).code === 'string'
-    );
+    response
+      .status(status)
+      .json(
+        ResponseUtil.error(
+          message,
+          status,
+          this.getErrorName(status),
+          details,
+        ),
+      );
   }
 
   private getErrorName(status: number): string {
@@ -128,21 +78,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
         return 'Conflict';
       case HttpStatus.UNPROCESSABLE_ENTITY:
         return 'Validation Error';
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return 'Too Many Requests';
+      case HttpStatus.REQUEST_TIMEOUT:
+        return 'Request Timeout';
       case HttpStatus.INTERNAL_SERVER_ERROR:
         return 'Internal Server Error';
       default:
         return 'Error';
     }
-  }
-
-  private parseUniqueConstraintDetail(detail: string): {
-    field?: string;
-    value?: string;
-  } {
-    const match = /Key \((.+)\)=\((.+)\) already exists\./.exec(detail);
-    if (match && match.length >= 3) {
-      return { field: match[1], value: match[2] };
-    }
-    return {};
   }
 }

@@ -3,56 +3,52 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
-  UsePipes,
-  ValidationPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from 'src/v1/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/v1/auth/guards/permissions.guard';
-import { RequirePermissions } from 'src/v1/auth/decorators/permissions.decorator';
-import { PermissionModule } from 'src/v1/auth/entities/permission.entity';
-import { LogActivity } from 'src/v1/activity-log/decorators/log-activity.decorator';
-import { LogAction } from 'src/v1/activity-log/constants/log-action.enum';
-import { ResponseUtil } from 'src/common/utils/response.util';
-import { AdminService } from '../services/admin.service';
-import { Admin } from '../entities/admin.entity';
-import { CreateAdminDto } from '../dto/create-admin.dto';
-import { UpdateAdminDto } from '../dto/update-admin.dto';
-import { FilterAdminDto } from '../dto/filter-admin.dto';
 import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
 import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { RequirePermissions } from 'src/v1/auth/decorators/permissions.decorator';
+import { PermissionModule } from 'src/v1/auth/entities/permission.entity';
+import { PermissionsGuard } from 'src/v1/auth/guards/permissions.guard';
+import { LogActivity } from 'src/v1/log/decorators/log-activity.decorator';
+import { LogAction } from 'src/v1/log/constants/log-action.enum';
+import { CreateAdminDto } from '../dto/create-admin.dto';
+import { FilterAdminDto } from '../dto/filter-admin.dto';
+import { UpdateAdminDto } from '../dto/update-admin.dto';
+import { AdminService } from '../services/admin.service';
 
 @Controller({ path: 'admins', version: '1' })
-@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
   @Post()
+  @LogActivity({
+    action: LogAction.CREATE,
+    description: 'Admin created another admin',
+    resourceType: 'Admin',
+  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'create' },
     { module: PermissionModule.ADMIN_LIST, permission: 'create' },
   )
-  @LogActivity({
-    action: LogAction.CREATE,
-    description: 'Admin created successfully',
-    resourceType: 'admin',
-    getResourceId: (result: Admin) => result.id?.toString(),
-  })
-  @UseInterceptors(FileInterceptor('profileImage', profileImageInterceptorOptions))
+  @UseInterceptors(
+    FileInterceptor('profileImage', profileImageInterceptorOptions),
+  )
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() createAdminDto: CreateAdminDto,
   ) {
-    const admin = await this.adminService.create(createAdminDto, file);
-    return ResponseUtil.created(admin, 'Admin created successfully');
+    return this.adminService.create(createAdminDto, file);
   }
 
   @Get()
@@ -62,72 +58,52 @@ export class AdminController {
     { module: PermissionModule.ADMIN_LIST, permission: 'read' },
   )
   async findAll(@Query() filters: FilterAdminDto) {
-    const result = await this.adminService.findAll(filters);
-
-    if (filters.getAll) {
-      return ResponseUtil.success(
-        result.data,
-        'All admins retrieved successfully',
-      );
-    }
-
-    return ResponseUtil.paginated(
-      result.data,
-      result.total,
-      result.page,
-      result.limit,
-      'Admins retrieved successfully',
-    );
+    return this.adminService.findAll(filters);
   }
 
-  @Get('/:id')
+  @Get(':id')
   @ResolvePresignedUrls('profileImageUrl')
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'read' },
     { module: PermissionModule.ADMIN_LIST, permission: 'read' },
   )
-  async findOne(@Param('id') id: string) {
-    const admin = await this.adminService.findOne(id);
-    return ResponseUtil.success(
-      admin,
-      `Admin retrieved by ID ${id} successfully`,
-    );
+  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.adminService.findOne(id);
   }
 
-  @Patch('/:id')
+  @Patch(':id')
+  @LogActivity({
+    action: LogAction.UPDATE,
+    description: 'Admin updated another admin',
+    resourceType: 'Admin',
+  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'update' },
     { module: PermissionModule.ADMIN_LIST, permission: 'update' },
   )
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'Admin updated successfully',
-    resourceType: 'admin',
-    getResourceId: (result: Admin) => result.id?.toString(),
-  })
-  @UseInterceptors(FileInterceptor('profileImage', profileImageInterceptorOptions))
+  @UseInterceptors(
+    FileInterceptor('profileImage', profileImageInterceptorOptions),
+  )
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() updateAdminDto: UpdateAdminDto,
   ) {
-    const admin = await this.adminService.update(id, updateAdminDto, file);
-    return ResponseUtil.updated(admin, 'Admin updated successfully');
+    return this.adminService.update(id, updateAdminDto, file);
   }
 
-  @Delete('/:id')
+  @Delete(':id')
+  @HttpCode(200)
+  @LogActivity({
+    action: LogAction.DELETE,
+    description: 'Admin deleted another admin',
+    resourceType: 'Admin',
+  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'delete' },
     { module: PermissionModule.ADMIN_LIST, permission: 'delete' },
   )
-  @LogActivity({
-    action: LogAction.DELETE,
-    description: 'Admin deleted successfully',
-    resourceType: 'admin',
-    getResourceId: (params: { id: string }) => params.id,
-  })
-  async remove(@Param('id') id: string) {
-    const result = await this.adminService.remove(id);
-    return ResponseUtil.success(result, 'Admin deleted successfully');
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.adminService.remove(id);
   }
 }

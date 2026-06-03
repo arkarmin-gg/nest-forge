@@ -1,9 +1,15 @@
-import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class ResetPasswordDto {
   @IsString({ message: 'Access Token must be a string' })
   @IsNotEmpty({ message: 'Access Token is required' })
-  accessToken: string;
+  accessToken!: string;
 
   @IsString({ message: 'New password must be a string' })
   @IsNotEmpty({ message: 'New password is required' })
@@ -13,5 +19,5 @@ export class ResetPasswordDto {
     message:
       'New password must contain at least one uppercase letter and one number',
   })
-  newPassword: string;
+  newPassword!: string;
 }

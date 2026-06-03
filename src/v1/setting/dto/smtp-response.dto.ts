@@ -2,32 +2,32 @@ import { Expose } from 'class-transformer';
 
 export class SMTPResponseDto {
   @Expose()
-  smtpHost: string;
+  smtpHost!: string;
 
   @Expose()
-  smtpPort: number;
+  smtpPort!: number;
 
   @Expose()
-  smtpSecure: boolean;
+  smtpSecure!: boolean;
 
   @Expose()
-  smtpUsername: string;
+  smtpUsername!: string;
 
   @Expose()
-  smtpPassword: string;
+  smtpPassword!: string;
 
   @Expose()
-  smtpFromEmail: string;
+  smtpFromEmail!: string;
 
   @Expose()
-  smtpFromName: string;
+  smtpFromName!: string;
 
   @Expose()
-  smtpEnabled: boolean;
+  smtpEnabled!: boolean;
 
   @Expose()
-  createdAt: Date;
+  createdAt!: Date;
 
   @Expose()
-  updatedAt: Date;
+  updatedAt!: Date;
 }

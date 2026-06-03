@@ -1,8 +1,8 @@
 import { Admin } from 'src/v1/admin/entities/admin.entity';
 import { User } from 'src/v1/user/entities/user.entity';
 
-type StrippedAdmin = Omit<Admin, 'password' | 'generateUUID' | 'hashPassword'>;
-type StrippedUser = Omit<User, 'password' | 'generateUUID' | 'hashPassword'>;
+type StrippedAdmin = Omit<Admin, 'password' | 'hashPassword'>;
+type StrippedUser = Omit<User, 'password' | 'hashPassword'>;
 
 export type AuthenticatedUser = (StrippedAdmin | StrippedUser) & {
   subjectType?: 'ADMIN' | 'USER';

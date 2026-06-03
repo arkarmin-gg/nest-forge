@@ -2,12 +2,14 @@ import { Controller, Get } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
-  TypeOrmHealthIndicator,
   MemoryHealthIndicator,
+  TypeOrmHealthIndicator,
 } from '@nestjs/terminus';
+import { SkipThrottle } from '@nestjs/throttler';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from 'src/v1/auth/decorators/public.decorator';
+import { version } from '../../package.json';
 
 @SkipThrottle()
 @Controller('health')
@@ -20,11 +22,13 @@ export class HealthController {
   ) {}
 
   @Get()
+  @Public()
   @HealthCheck()
-  check() {
-    return this.health.check([
+  async check() {
+    const result = await this.health.check([
       () => this.db.pingCheck('database', { connection: this.dataSource }),
-      () => this.memory.checkHeap('memory_heap', 300 * 1024 * 1024), // 300 MB
+      () => this.memory.checkHeap('memory_heap', 300 * 1024 * 1024),
     ]);
+    return { ...result, version };
   }
 }

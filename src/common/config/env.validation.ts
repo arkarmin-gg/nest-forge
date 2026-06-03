@@ -37,8 +37,12 @@ export const envValidationSchema = Joi.object({
   AWS_BUCKET_NAME: Joi.string().optional(),
   AWS_ENDPOINT: Joi.string().optional(),
 
+  // OAuth
+  GOOGLE_CLIENT_ID: Joi.string().optional(),
+  APPLE_CLIENT_ID: Joi.string().optional(),
+
   // Email
-  SMTP_FROM_NAME: Joi.string().optional(),
+  SMTP_FROM_NAME: Joi.string().required(),
 
   // OTP
   OTP_MOCK_ENABLED: Joi.boolean().optional(),

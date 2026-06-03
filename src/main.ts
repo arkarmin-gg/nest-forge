@@ -1,17 +1,22 @@
 process.env.TZ = 'UTC';
 
-import { NestFactory, Reflector } from '@nestjs/core';
 import {
   ClassSerializerInterceptor,
+  Logger,
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
-import { AppModule } from './app.module';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { WinstonModule } from 'nest-winston';
-import { winstonConfig } from './common/config/logger.config';
-import helmet from 'helmet';
 import { ConfigService } from '@nestjs/config';
+import { NestFactory, Reflector } from '@nestjs/core';
+import helmet from 'helmet';
+import { WinstonModule } from 'nest-winston';
+import { AppModule } from './app.module';
+import { winstonConfig } from './common/config/logger.config';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { DatabaseExceptionFilter } from './common/filters/database-exception.filter';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -33,12 +38,17 @@ async function bootstrap() {
           scriptSrc: ["'self'", ...(isProduction ? [] : ["'unsafe-inline'"])],
         },
       },
+      // HSTS must be off in dev — once sent, browsers enforce HTTPS-only for the
+      // entire origin (including localhost), causing TLS errors on plain HTTP servers.
+      hsts: isProduction,
     }),
   );
 
   // Environment-based CORS configuration
   const envOriginsRaw = configService.get<string>('CORS_ORIGINS');
   let origins: string[] | boolean = [];
+
+  const bootstrapLogger = new Logger('Bootstrap');
 
   if (envOriginsRaw) {
     const parsed = envOriginsRaw
@@ -49,8 +59,8 @@ async function bootstrap() {
       const val = parsed[0].toLowerCase();
       if (val === '*' || val === 'all' || val === 'true') {
         origins = true;
-        console.warn(
-          '[SECURITY WARNING] CORS is configured to allow ALL origins. ' +
+        bootstrapLogger.warn(
+          'CORS is configured to allow ALL origins. ' +
             'This is only acceptable in local development. ' +
             'Set CORS_ORIGINS to specific domains in production.',
         );
@@ -88,11 +98,21 @@ async function bootstrap() {
     }),
   );
 
-  // Enable global serialization
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+  // Enable global serialization and timeout (10s default; slow routes override via @RequestTimeout)
+  const reflector = app.get(Reflector);
+  app.useGlobalInterceptors(
+    new ClassSerializerInterceptor(reflector),
+    new TimeoutInterceptor(reflector),
+  );
 
-  // Apply global exception filter
-  app.useGlobalFilters(new HttpExceptionFilter());
+  // Filter registration: NestJS routes exceptions to the most specific @Catch type first.
+  // AllExceptionsFilter (@Catch()) is the final catch-all for anything not handled below.
+  app.useGlobalFilters(
+    new AllExceptionsFilter(),
+    new DatabaseExceptionFilter(),
+    new HttpExceptionFilter(),
+    new ThrottlerExceptionFilter(),
+  );
 
   // Set global API prefix — produces /api/v1/... with URI versioning
   app.setGlobalPrefix('api');
@@ -108,18 +128,34 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3000);
   const server = await app.listen(port);
 
-  console.log(`Application is running on port ${port}`);
-  console.log(`Environment: ${configService.get('NODE_ENV', 'development')}`);
-  console.log(`TZ: ${configService.get('TZ', 'UTC')}`);
+  bootstrapLogger.log(`Application is running on port ${port}`);
+  bootstrapLogger.log(
+    `Environment: ${configService.get('NODE_ENV', 'development')}`,
+  );
+  bootstrapLogger.log(`TZ: ${configService.get('TZ', 'UTC')}`);
 
   // Graceful shutdown on SIGTERM (container restarts, PM2 reloads)
   process.on('SIGTERM', async () => {
-    console.log('SIGTERM received. Shutting down gracefully...');
+    bootstrapLogger.log('SIGTERM received. Shutting down gracefully...');
     await app.close();
     server.close(() => {
-      console.log('HTTP server closed.');
+      bootstrapLogger.log('HTTP server closed.');
       process.exit(0);
     });
+  });
+
+  // Catch async errors that escape NestJS request scope (queue processors, scheduled jobs, etc.)
+  process.on('unhandledRejection', (reason: unknown) => {
+    bootstrapLogger.error(
+      'Unhandled promise rejection',
+      reason instanceof Error ? reason.stack : String(reason),
+    );
+  });
+
+  // Catch synchronous errors that escape all try/catch boundaries
+  process.on('uncaughtException', (error: Error) => {
+    bootstrapLogger.error('Uncaught exception', error.stack);
+    process.exit(1);
   });
 }
 bootstrap();

@@ -11,9 +11,15 @@ import { CreateAdminDto } from '../dto/create-admin.dto';
 import { UpdateAdminDto } from '../dto/update-admin.dto';
 import { FilterAdminDto } from '../dto/filter-admin.dto';
 import { Role } from 'src/v1/auth/entities/role.entity';
-import { S3ClientUtils } from 'src/common/utils/s3-client.utils';
 import { FileUploadService } from 'src/common/services/file-upload.service';
-import { attachAuditLogMetadata } from 'src/v1/activity-log/utils/audit-log-metadata.util';
+import {
+  attachAuditLogMetadata,
+  diffAuditValues,
+} from 'src/v1/log/utils/audit-log-metadata.util';
+import {
+  parseRangeStart,
+  parseRangeEnd,
+} from 'src/common/utils/date-time.util';
 
 @Injectable()
 export class AdminService {
@@ -24,7 +30,6 @@ export class AdminService {
     private adminRepository: Repository<Admin>,
     @InjectRepository(Role)
     private roleRepository: Repository<Role>,
-    private s3ClientUtils: S3ClientUtils,
     private fileUploadService: FileUploadService,
   ) {}
 
@@ -48,17 +53,14 @@ export class AdminService {
       );
     }
 
-    let profileImageUrl = createAdminDto.profileImageUrl || '';
-
-    if (file) {
-      const uploadedKey = await this.fileUploadService.uploadProfileImage(
+    const profileImageUrl = await this.fileUploadService.resolveProfileImageUrl(
+      {
         file,
-        'admins/profile',
-      );
-      if (uploadedKey) {
-        profileImageUrl = uploadedKey;
-      }
-    }
+        bodyUrl: createAdminDto.profileImageUrl,
+        existingUrl: '',
+        s3Path: 'admins/profile',
+      },
+    );
 
     const admin = this.adminRepository.create({
       ...createAdminDto,
@@ -97,9 +99,21 @@ export class AdminService {
       qb.andWhere('admin.isBanned = :isBanned', { isBanned: filter.isBanned });
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    if (filter.startDate) {
+      qb.andWhere('admin.createdAt >= :startDate', {
+        startDate: parseRangeStart(filter.startDate),
+      });
+    }
 
-    return { data, total, page, limit };
+    if (filter.endDate) {
+      qb.andWhere('admin.createdAt <= :endDate', {
+        endDate: parseRangeEnd(filter.endDate),
+      });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return { items, total };
   }
 
   async findOne(id: string) {
@@ -130,52 +144,38 @@ export class AdminService {
       throw new NotFoundException(`Admin with ID '${id}' not found`);
     }
 
-    if (updateAdminDto.email && updateAdminDto.email !== existingAdmin.email) {
+    // PartialType uses runtime reflection — cast once to access inherited properties
+    const dto = updateAdminDto as Partial<CreateAdminDto>;
+
+    if (dto.email && dto.email !== existingAdmin.email) {
       const duplicateEmailAdmin = await this.adminRepository.findOne({
-        where: { email: updateAdminDto.email },
+        where: { email: dto.email },
       });
       if (duplicateEmailAdmin) {
-        this.logger.warn(
-          `Admin with email '${updateAdminDto.email}' already exists`,
-        );
+        this.logger.warn(`Admin with email '${dto.email}' already exists`);
         throw new ConflictException(
-          `Admin with email '${updateAdminDto.email}' already exists`,
+          `Admin with email '${dto.email}' already exists`,
         );
       }
     }
 
-    if (
-      updateAdminDto.roleId &&
-      updateAdminDto.roleId !== existingAdmin.roleId
-    ) {
+    if (dto.roleId && dto.roleId !== existingAdmin.roleId) {
       const role = await this.roleRepository.findOne({
-        where: { id: updateAdminDto.roleId },
+        where: { id: dto.roleId },
       });
       if (!role) {
-        this.logger.warn(`Role with ID '${updateAdminDto.roleId}' not found`);
-        throw new NotFoundException(
-          `Role with ID '${updateAdminDto.roleId}' not found`,
-        );
+        this.logger.warn(`Role with ID '${dto.roleId}' not found`);
+        throw new NotFoundException(`Role with ID '${dto.roleId}' not found`);
       }
     }
 
-    const hasBodyProfileImageUrl =
-      typeof updateAdminDto.profileImageUrl === 'string' &&
-      updateAdminDto.profileImageUrl.length >= 0;
-
-    let newProfileImageUrl = existingAdmin.profileImageUrl || '';
-
-    if (file) {
-      const uploadedKey = await this.fileUploadService.uploadProfileImage(
+    const newProfileImageUrl =
+      await this.fileUploadService.resolveProfileImageUrl({
         file,
-        'admins/profile',
-      );
-      if (uploadedKey) {
-        newProfileImageUrl = uploadedKey;
-      }
-    } else if (hasBodyProfileImageUrl) {
-      newProfileImageUrl = updateAdminDto.profileImageUrl || '';
-    }
+        bodyUrl: dto.profileImageUrl,
+        existingUrl: existingAdmin.profileImageUrl || '',
+        s3Path: 'admins/profile',
+      });
 
     const updatedAdmin = await this.adminRepository.preload({
       id,
@@ -190,51 +190,24 @@ export class AdminService {
 
     const savedAdmin = await this.adminRepository.save(updatedAdmin);
 
-    const auditValues = this.getChangedAuditValues(existingAdmin, savedAdmin, [
-      ...Object.keys(updateAdminDto),
-      ...(file ? ['profileImageUrl'] : []),
-    ]);
-    attachAuditLogMetadata(savedAdmin, auditValues);
+    attachAuditLogMetadata(
+      savedAdmin,
+      diffAuditValues(existingAdmin, savedAdmin, [
+        ...Object.keys(updateAdminDto),
+        ...(file ? ['profileImageUrl'] : []),
+      ]),
+    );
 
-    const imageChanged =
-      newProfileImageUrl !== (existingAdmin.profileImageUrl || '');
-
-    if (imageChanged && existingAdmin.profileImageUrl) {
-      await this.s3ClientUtils.deleteObject(existingAdmin.profileImageUrl);
-    }
+    await this.fileUploadService.replaceProfileImage(
+      newProfileImageUrl,
+      existingAdmin.profileImageUrl || '',
+    );
     this.logger.log(`Admin updated with ID: ${savedAdmin.id}`);
 
     return savedAdmin;
   }
 
-  private getChangedAuditValues(
-    oldAdmin: Admin,
-    newAdmin: Admin,
-    fields: string[],
-  ): {
-    oldValue: Record<string, unknown>;
-    newValue: Record<string, unknown>;
-  } {
-    const oldValue: Record<string, unknown> = {};
-    const newValue: Record<string, unknown> = {};
-    const auditableFields = [...new Set(fields)].filter(
-      (field) => field !== 'password',
-    );
-
-    for (const field of auditableFields) {
-      const oldFieldValue = oldAdmin[field as keyof Admin] as unknown;
-      const newFieldValue = newAdmin[field as keyof Admin] as unknown;
-
-      if (oldFieldValue !== newFieldValue) {
-        oldValue[field] = oldFieldValue;
-        newValue[field] = newFieldValue;
-      }
-    }
-
-    return { oldValue, newValue };
-  }
-
-  async remove(id: string) {
+  async remove(id: string): Promise<void> {
     const existingAdmin = await this.adminRepository.findOne({
       where: { id },
     });
@@ -242,15 +215,11 @@ export class AdminService {
       throw new NotFoundException(`Admin with ID '${id}' not found`);
     }
 
-    if (existingAdmin.profileImageUrl) {
-      await this.s3ClientUtils.deleteObject(existingAdmin.profileImageUrl);
-    }
+    await this.fileUploadService.deleteProfileImage(
+      existingAdmin.profileImageUrl || '',
+    );
 
     await this.adminRepository.softRemove(existingAdmin);
     this.logger.log(`Admin with ID '${id}' has been successfully soft deleted`);
-
-    return {
-      message: `Admin with ID '${id}' has been successfully deleted`,
-    };
   }
 }

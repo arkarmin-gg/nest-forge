@@ -1,23 +1,21 @@
 import {
-  Injectable,
-  ConflictException,
   BadRequestException,
+  ConflictException,
+  Injectable,
   Logger,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { Transactional, TransactionContext } from 'src/common/transaction';
 import {
-  Repository,
-  DataSource,
-  EntityManager,
-  FindManyOptions,
-  ILike,
-  In,
-} from 'typeorm';
-import { Role } from '../entities/role.entity';
-import { Permission } from '../entities/permission.entity';
-import { RolePermission } from '../entities/role-permission.entity';
+  attachAuditLogMetadata,
+  diffAuditValues,
+} from 'src/v1/log/utils/audit-log-metadata.util';
+import { DataSource, FindManyOptions, ILike, In, Repository } from 'typeorm';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
+import { Permission } from '../entities/permission.entity';
+import { RolePermission } from '../entities/role-permission.entity';
+import { Role } from '../entities/role.entity';
 
 @Injectable()
 export class RoleService {
@@ -60,7 +58,8 @@ export class RoleService {
       findOptions.take = limit;
     }
 
-    return await this.roleRepository.findAndCount(findOptions);
+    const [items, total] = await this.roleRepository.findAndCount(findOptions);
+    return { items, total };
   }
 
   async findAllPermissions() {
@@ -87,8 +86,8 @@ export class RoleService {
     });
   }
 
+  @Transactional()
   async create(createRoleDto: CreateRoleDto): Promise<Role | null> {
-    // Check if role with same name already exists
     const existingRole = await this.roleRepository.findOne({
       where: { name: createRoleDto.name },
     });
@@ -100,44 +99,35 @@ export class RoleService {
       );
     }
 
-    // Validate permission IDs
     await this.validatePermissionIds(createRoleDto.permissionIds);
 
-    // Use transaction to ensure data consistency
-    return await this.dataSource.transaction(async (manager) => {
-      // Create the role
-      const role = manager.create(Role, {
-        name: createRoleDto.name,
-        description: createRoleDto.description,
-      });
+    const manager = TransactionContext.getManager()!;
+    const role = manager.create(Role, {
+      name: createRoleDto.name,
+      description: createRoleDto.description,
+      ...(createRoleDto.rank !== undefined && { rank: createRoleDto.rank }),
+    });
+    const savedRole = await manager.save(role);
 
-      const savedRole = await manager.save(role);
+    if (createRoleDto.permissionIds && createRoleDto.permissionIds.length > 0) {
+      await this.assignPermissionsToRole(
+        savedRole.id,
+        createRoleDto.permissionIds,
+      );
+    }
 
-      // Create role-permission relationships
-      if (
-        createRoleDto.permissionIds &&
-        createRoleDto.permissionIds.length > 0
-      ) {
-        await this.assignPermissionsToRole(
-          savedRole.id,
-          createRoleDto.permissionIds,
-          manager,
-        );
-      }
-
-      // Return role with permissions
-      this.logger.log(`Role created with ID: ${savedRole.id}`);
-      return await manager.findOne(Role, {
-        where: { id: savedRole.id },
-        relations: [
-          'rolePermissions',
-          'rolePermissions.permission',
-          'rolePermissions.permission.module',
-        ],
-      });
+    this.logger.log(`Role created with ID: ${savedRole.id}`);
+    return manager.findOne(Role, {
+      where: { id: savedRole.id },
+      relations: [
+        'rolePermissions',
+        'rolePermissions.permission',
+        'rolePermissions.permission.module',
+      ],
     });
   }
 
+  @Transactional()
   async update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role | null> {
     const role = await this.findOne(id);
 
@@ -145,7 +135,6 @@ export class RoleService {
       return null;
     }
 
-    // Check if updating name and it conflicts with existing role
     if (updateRoleDto.name && updateRoleDto.name !== role.name) {
       const existingRole = await this.roleRepository.findOne({
         where: { name: updateRoleDto.name },
@@ -161,47 +150,53 @@ export class RoleService {
       }
     }
 
-    // Validate permission IDs if provided
     if (updateRoleDto.permissionIds) {
       await this.validatePermissionIds(updateRoleDto.permissionIds);
     }
 
-    // Use transaction to ensure data consistency
-    return await this.dataSource.transaction(async (manager) => {
-      // Update role basic info
-      if (updateRoleDto.name || updateRoleDto.description) {
-        await manager.update(Role, id, {
-          name: updateRoleDto.name,
-          description: updateRoleDto.description,
-        });
-      }
+    const manager = TransactionContext.getManager()!;
 
-      // Update permissions if provided
-      if (updateRoleDto.permissionIds !== undefined) {
-        // Remove existing role-permission relationships
-        await manager.delete(RolePermission, { roleId: id });
-
-        // Add new role-permission relationships
-        if (updateRoleDto.permissionIds.length > 0) {
-          await this.assignPermissionsToRole(
-            id,
-            updateRoleDto.permissionIds,
-            manager,
-          );
-        }
-      }
-
-      // Return updated role with permissions
-      this.logger.log(`Role updated with ID: ${id}`);
-      return await manager.findOne(Role, {
-        where: { id },
-        relations: [
-          'rolePermissions',
-          'rolePermissions.permission',
-          'rolePermissions.permission.module',
-        ],
+    if (
+      updateRoleDto.name ||
+      updateRoleDto.description ||
+      updateRoleDto.rank !== undefined
+    ) {
+      await manager.update(Role, id, {
+        name: updateRoleDto.name,
+        description: updateRoleDto.description,
+        ...(updateRoleDto.rank !== undefined && { rank: updateRoleDto.rank }),
       });
+    }
+
+    if (updateRoleDto.permissionIds !== undefined) {
+      await manager.delete(RolePermission, { roleId: id });
+
+      if (updateRoleDto.permissionIds.length > 0) {
+        await this.assignPermissionsToRole(id, updateRoleDto.permissionIds);
+      }
+    }
+
+    this.logger.log(`Role updated with ID: ${id}`);
+    const updatedRole = await manager.findOne(Role, {
+      where: { id },
+      relations: [
+        'rolePermissions',
+        'rolePermissions.permission',
+        'rolePermissions.permission.module',
+      ],
     });
+
+    if (updatedRole) {
+      const trackedFields = Object.keys(updateRoleDto).filter(
+        (k) => k !== 'permissionIds',
+      );
+      attachAuditLogMetadata(
+        updatedRole,
+        diffAuditValues(role, updatedRole, trackedFields),
+      );
+    }
+
+    return updatedRole;
   }
 
   async remove(id: string): Promise<boolean> {
@@ -211,7 +206,6 @@ export class RoleService {
       return false;
     }
 
-    // Check if role has admins assigned
     if (role.admins && role.admins.length > 0) {
       this.logger.warn(
         `Cannot delete role with ID '${id}' that has admins assigned to it`,
@@ -221,7 +215,6 @@ export class RoleService {
       );
     }
 
-    // Soft delete role
     await this.roleRepository.softDelete(id);
     this.logger.log(`Role with ID '${id}' has been successfully soft deleted`);
     return true;
@@ -251,15 +244,11 @@ export class RoleService {
   private async assignPermissionsToRole(
     roleId: string,
     permissionIds: string[],
-    manager: EntityManager,
   ): Promise<void> {
+    const manager = TransactionContext.getManager()!;
     const rolePermissions = permissionIds.map((permissionId) =>
-      manager.create(RolePermission, {
-        roleId,
-        permissionId,
-      }),
+      manager.create(RolePermission, { roleId, permissionId }),
     );
-
     await manager.save(RolePermission, rolePermissions);
   }
 }

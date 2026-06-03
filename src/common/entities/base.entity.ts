@@ -1,29 +1,20 @@
-import { randomUUID } from 'crypto';
 import {
-  BeforeInsert,
   CreateDateColumn,
   DeleteDateColumn,
   Index,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 export abstract class BaseEntity {
-  @PrimaryColumn('uuid')
-  id: string;
-
-  @BeforeInsert()
-  generateUUID() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @Index()
   @DeleteDateColumn({ type: 'timestamptz' })

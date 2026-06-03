@@ -10,10 +10,15 @@ import { User } from '../entities/user.entity';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { FilterUserDto } from '../dto/filter-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
-import { S3ClientUtils } from 'src/common/utils/s3-client.utils';
 import { FileUploadService } from 'src/common/services/file-upload.service';
-import { attachAuditLogMetadata } from 'src/v1/activity-log/utils/audit-log-metadata.util';
-import { parseRangeStart, parseRangeEnd } from 'src/common/utils/date-time.util';
+import {
+  attachAuditLogMetadata,
+  diffAuditValues,
+} from 'src/v1/log/utils/audit-log-metadata.util';
+import {
+  parseRangeStart,
+  parseRangeEnd,
+} from 'src/common/utils/date-time.util';
 
 @Injectable()
 export class UserService {
@@ -22,7 +27,6 @@ export class UserService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
-    private s3ClientUtils: S3ClientUtils,
     private fileUploadService: FileUploadService,
   ) {}
 
@@ -93,9 +97,9 @@ export class UserService {
       });
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const [items, total] = await qb.getManyAndCount();
 
-    return { data, total, page, limit };
+    return { items, total };
   }
 
   async findOne(id: string) {
@@ -114,44 +118,34 @@ export class UserService {
     updateUserDto: UpdateUserDto,
     file?: Express.Multer.File,
   ) {
-    // Check if user exists
     const existingUser = await this.userRepository.findOne({ where: { id } });
 
     if (!existingUser) {
       throw new NotFoundException(`User with ID '${id}' not found`);
     }
 
-    if (updateUserDto.phone && updateUserDto.phone !== existingUser.phone) {
+    // PartialType uses runtime reflection — cast once to access inherited properties
+    const dto = updateUserDto as Partial<CreateUserDto>;
+
+    if (dto.phone && dto.phone !== existingUser.phone) {
       const duplicatePhoneUser = await this.userRepository.findOne({
-        where: { phone: updateUserDto.phone },
+        where: { phone: dto.phone },
       });
       if (duplicatePhoneUser) {
-        this.logger.warn(
-          `User with phone '${updateUserDto.phone}' already exists`,
-        );
+        this.logger.warn(`User with phone '${dto.phone}' already exists`);
         throw new ConflictException(
-          `User with phone '${updateUserDto.phone}' already exists`,
+          `User with phone '${dto.phone}' already exists`,
         );
       }
     }
 
-    const hasBodyProfileImageUrl =
-      typeof updateUserDto.profileImageUrl === 'string' &&
-      updateUserDto.profileImageUrl.length >= 0;
-
-    let newProfileImageUrl = existingUser.profileImageUrl || '';
-
-    if (file) {
-      const uploadedKey = await this.fileUploadService.uploadProfileImage(
+    const newProfileImageUrl =
+      await this.fileUploadService.resolveProfileImageUrl({
         file,
-        'users/profile',
-      );
-      if (uploadedKey) {
-        newProfileImageUrl = uploadedKey;
-      }
-    } else if (hasBodyProfileImageUrl) {
-      newProfileImageUrl = updateUserDto.profileImageUrl || '';
-    }
+        bodyUrl: dto.profileImageUrl,
+        existingUrl: existingUser.profileImageUrl || '',
+        s3Path: 'users/profile',
+      });
 
     const updatedUser = await this.userRepository.preload({
       id,
@@ -164,57 +158,30 @@ export class UserService {
       throw new NotFoundException(`User with ID '${id}' not found`);
     }
 
-    if (updateUserDto.password) {
-      updatedUser.password = updateUserDto.password;
+    if (dto.password) {
+      updatedUser.password = dto.password;
     }
 
     const savedUser = await this.userRepository.save(updatedUser);
 
-    const auditValues = this.getChangedAuditValues(existingUser, savedUser, [
-      ...Object.keys(updateUserDto),
-      ...(file ? ['profileImageUrl'] : []),
-    ]);
-    attachAuditLogMetadata(savedUser, auditValues);
+    attachAuditLogMetadata(
+      savedUser,
+      diffAuditValues(existingUser, savedUser, [
+        ...Object.keys(updateUserDto),
+        ...(file ? ['profileImageUrl'] : []),
+      ]),
+    );
 
-    const imageChanged =
-      newProfileImageUrl !== (existingUser.profileImageUrl || '');
-
-    if (imageChanged && existingUser.profileImageUrl) {
-      await this.s3ClientUtils.deleteObject(existingUser.profileImageUrl);
-    }
+    await this.fileUploadService.replaceProfileImage(
+      newProfileImageUrl,
+      existingUser.profileImageUrl || '',
+    );
     this.logger.log(`User updated with ID: ${savedUser.id}`);
 
     return savedUser;
   }
 
-  private getChangedAuditValues(
-    oldUser: User,
-    newUser: User,
-    fields: string[],
-  ): {
-    oldValue: Record<string, unknown>;
-    newValue: Record<string, unknown>;
-  } {
-    const oldValue: Record<string, unknown> = {};
-    const newValue: Record<string, unknown> = {};
-    const auditableFields = [...new Set(fields)].filter(
-      (field) => field !== 'password',
-    );
-
-    for (const field of auditableFields) {
-      const oldFieldValue = oldUser[field as keyof User] as unknown;
-      const newFieldValue = newUser[field as keyof User] as unknown;
-
-      if (oldFieldValue !== newFieldValue) {
-        oldValue[field] = oldFieldValue;
-        newValue[field] = newFieldValue;
-      }
-    }
-
-    return { oldValue, newValue };
-  }
-
-  async remove(id: string) {
+  async remove(id: string): Promise<void> {
     const existingUser = await this.userRepository.findOne({
       where: { id },
     });
@@ -222,15 +189,11 @@ export class UserService {
       throw new NotFoundException(`User with ID '${id}' not found`);
     }
 
-    if (existingUser.profileImageUrl) {
-      await this.s3ClientUtils.deleteObject(existingUser.profileImageUrl);
-    }
+    await this.fileUploadService.deleteProfileImage(
+      existingUser.profileImageUrl || '',
+    );
 
     await this.userRepository.softRemove(existingUser);
     this.logger.log(`User with ID '${id}' has been successfully soft deleted`);
-
-    return {
-      message: `User with ID '${id}' has been successfully deleted`,
-    };
   }
 }

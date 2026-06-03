@@ -18,15 +18,15 @@ export class UserRegisterAccountSetupDto {
   @IsNotEmpty({ message: 'Full name is required' })
   @MinLength(2, { message: 'Full name must be at least 2 characters long' })
   @MaxLength(100, { message: 'Full name must not exceed 100 characters' })
-  fullName: string;
+  fullName!: string;
 
   @IsString({ message: 'User ID must be a string' })
   @IsUUID('4', { message: 'User ID must be a valid UUID v4' })
   @IsNotEmpty({ message: 'User ID is required' })
-  userId: string;
+  userId!: string;
 
   @IsString({ message: 'Date of birth must be a string' })
-  dateOfBirth: string;
+  dateOfBirth!: string;
 
   @IsOptional()
   @IsString({ message: 'Gender must be a string' })

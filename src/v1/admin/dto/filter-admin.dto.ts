@@ -22,4 +22,12 @@ export class FilterAdminDto extends PaginationFilterDto {
   @IsUUID('4', { message: 'Role ID must be a valid UUID' })
   @Transform(({ value }) => value?.trim() || undefined)
   roleId?: string;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
 }

@@ -6,10 +6,6 @@ import { S3ClientUtils } from '../utils/s3-client.utils';
 export class FileUploadService {
   constructor(private readonly s3ClientUtils: S3ClientUtils) {}
 
-  /**
-   * Uploads a profile image to S3 and returns the stored object key.
-   * Returns null if the upload fails.
-   */
   async uploadProfileImage(
     file: Express.Multer.File,
     path: 'users/profile' | 'admins/profile',
@@ -27,5 +23,41 @@ export class FileUploadService {
     });
 
     return res.success && res.key ? res.key : null;
+  }
+
+  /**
+   * Resolves which profile image URL to persist after an update.
+   *
+   * Priority: uploaded file > body URL > existing URL.
+   * A body URL of '' means "clear the image".
+   */
+  async resolveProfileImageUrl(opts: {
+    file?: Express.Multer.File;
+    bodyUrl: string | undefined;
+    existingUrl: string;
+    s3Path: 'users/profile' | 'admins/profile';
+  }): Promise<string> {
+    if (opts.file) {
+      const uploaded = await this.uploadProfileImage(opts.file, opts.s3Path);
+      return uploaded ?? opts.existingUrl;
+    }
+
+    if (typeof opts.bodyUrl === 'string') {
+      return opts.bodyUrl;
+    }
+
+    return opts.existingUrl;
+  }
+
+  async replaceProfileImage(newUrl: string, oldUrl: string): Promise<void> {
+    if (newUrl !== oldUrl && oldUrl) {
+      await this.s3ClientUtils.deleteObject(oldUrl);
+    }
+  }
+
+  async deleteProfileImage(url: string): Promise<void> {
+    if (url) {
+      await this.s3ClientUtils.deleteObject(url);
+    }
   }
 }

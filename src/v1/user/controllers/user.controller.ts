@@ -3,56 +3,52 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
-  UsePipes,
-  ValidationPipe,
 } from '@nestjs/common';
-import { JwtAuthGuard } from 'src/v1/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/v1/auth/guards/permissions.guard';
-import { UserService } from '../services/user.service';
-import { RequirePermissions } from 'src/v1/auth/decorators/permissions.decorator';
-import { PermissionModule } from 'src/v1/auth/entities/permission.entity';
-import { LogActivity } from 'src/v1/activity-log/decorators/log-activity.decorator';
-import { LogAction } from 'src/v1/activity-log/constants/log-action.enum';
-import { User } from '../entities/user.entity';
-import { CreateUserDto } from '../dto/create-user.dto';
-import { ResponseUtil } from 'src/common/utils/response.util';
-import { FilterUserDto } from '../dto/filter-user.dto';
-import { UpdateUserDto } from '../dto/update-user.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
 import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { RequirePermissions } from 'src/v1/auth/decorators/permissions.decorator';
+import { PermissionModule } from 'src/v1/auth/entities/permission.entity';
+import { PermissionsGuard } from 'src/v1/auth/guards/permissions.guard';
+import { LogActivity } from 'src/v1/log/decorators/log-activity.decorator';
+import { LogAction } from 'src/v1/log/constants/log-action.enum';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { FilterUserDto } from '../dto/filter-user.dto';
+import { UpdateUserDto } from '../dto/update-user.dto';
+import { UserService } from '../services/user.service';
 
 @Controller({ path: 'users', version: '1' })
-@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
+  @LogActivity({
+    action: LogAction.CREATE,
+    description: 'Admin created a user',
+    resourceType: 'User',
+  })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'create' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'create' },
   )
-  @LogActivity({
-    action: LogAction.CREATE,
-    description: 'User created successfully',
-    resourceType: 'user',
-    getResourceId: (result: User) => result.id?.toString(),
-  })
-  @UseInterceptors(FileInterceptor('profileImage', profileImageInterceptorOptions))
+  @UseInterceptors(
+    FileInterceptor('profileImage', profileImageInterceptorOptions),
+  )
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() createUserDto: CreateUserDto,
   ) {
-    const user = await this.userService.create(createUserDto, file);
-    return ResponseUtil.created(user, 'User created successfully');
+    return this.userService.create(createUserDto, file);
   }
 
   @Get()
@@ -62,72 +58,52 @@ export class UserController {
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'read' },
   )
   async findAll(@Query() filters: FilterUserDto) {
-    const result = await this.userService.findAll(filters);
-
-    if (filters.getAll) {
-      return ResponseUtil.success(
-        result.data,
-        'All users retrieved successfully',
-      );
-    }
-
-    return ResponseUtil.paginated(
-      result.data,
-      result.total,
-      result.page,
-      result.limit,
-      'Users retrieved successfully',
-    );
+    return this.userService.findAll(filters);
   }
 
-  @Get('/:id')
+  @Get(':id')
   @ResolvePresignedUrls('profileImageUrl')
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'read' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'read' },
   )
-  async findOne(@Param('id') id: string) {
-    const user = await this.userService.findOne(id);
-    return ResponseUtil.success(
-      user,
-      `User retrieved by ID ${id} successfully`,
-    );
+  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.userService.findOne(id);
   }
 
-  @Patch('/:id')
+  @Patch(':id')
+  @LogActivity({
+    action: LogAction.UPDATE,
+    description: 'Admin updated a user',
+    resourceType: 'User',
+  })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'update' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'update' },
   )
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'User updated successfully',
-    resourceType: 'user',
-    getResourceId: (result: User) => result.id?.toString(),
-  })
-  @UseInterceptors(FileInterceptor('profileImage', profileImageInterceptorOptions))
+  @UseInterceptors(
+    FileInterceptor('profileImage', profileImageInterceptorOptions),
+  )
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() updateUserDto: UpdateUserDto,
   ) {
-    const user = await this.userService.update(id, updateUserDto, file);
-    return ResponseUtil.updated(user, 'User updated successfully');
+    return this.userService.update(id, updateUserDto, file);
   }
 
-  @Delete('/:id')
+  @Delete(':id')
+  @HttpCode(200)
+  @LogActivity({
+    action: LogAction.DELETE,
+    description: 'Admin deleted a user',
+    resourceType: 'User',
+  })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'delete' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'delete' },
   )
-  @LogActivity({
-    action: LogAction.DELETE,
-    description: 'User deleted successfully',
-    resourceType: 'user',
-    getResourceId: (params: { id: string }) => params.id,
-  })
-  async remove(@Param('id') id: string) {
-    const result = await this.userService.remove(id);
-    return ResponseUtil.success(result, 'User deleted successfully');
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.userService.remove(id);
   }
 }

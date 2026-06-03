@@ -1,20 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Admin } from 'src/v1/admin/entities/admin.entity';
+import { User, UserRegistrationStage } from 'src/v1/user/entities/user.entity';
 import { Repository } from 'typeorm';
-import { Role } from '../entities/role.entity';
+import { ModuleEntity } from '../entities/module.entity';
 import {
+  ActionType,
   Permission,
   PermissionModule,
-  ActionType,
 } from '../entities/permission.entity';
 import { RolePermission } from '../entities/role-permission.entity';
-import { Admin } from 'src/v1/admin/entities/admin.entity';
-import { ModuleEntity } from '../entities/module.entity';
-import { User, UserRegistrationStage } from 'src/v1/user/entities/user.entity';
+import { Role } from '../entities/role.entity';
 
 interface RoleConfig {
   name: string;
   description: string;
+  rank?: number;
   modules: {
     [module: string]: ActionType[];
   };
@@ -23,11 +24,9 @@ interface RoleConfig {
 interface ModuleSeed {
   name: string;
   code: PermissionModule;
-  allowedActions?: ActionType[];
   children?: {
     name: string;
     code: PermissionModule;
-    allowedActions?: ActionType[];
   }[];
 }
 
@@ -60,6 +59,7 @@ export class AuthSeeder {
       {
         name: 'Super Admin',
         description: 'Super Administrator role with full access',
+        rank: 1,
         modules: moduleAccess,
       },
     ];
@@ -78,16 +78,6 @@ export class AuthSeeder {
           {
             name: 'Admin Role Permissions',
             code: PermissionModule.ADMIN_ROLE_PERMISSIONS,
-          },
-          {
-            name: 'Admin User Logs',
-            code: PermissionModule.ADMIN_USER_LOGS,
-            allowedActions: [ActionType.READ],
-          },
-          {
-            name: 'Admin Audit Logs',
-            code: PermissionModule.ADMIN_AUDIT_LOGS,
-            allowedActions: [ActionType.READ],
           },
         ],
       },
@@ -111,6 +101,20 @@ export class AuthSeeder {
           },
         ],
       },
+      {
+        name: 'Logs',
+        code: PermissionModule.LOGS,
+        children: [
+          {
+            name: 'Activity Logs',
+            code: PermissionModule.ACTIVITY_LOGS,
+          },
+          {
+            name: 'Audit Logs',
+            code: PermissionModule.AUDIT_LOGS,
+          },
+        ],
+      },
     ];
 
     const createdModules: ModuleEntity[] = [];
@@ -124,9 +128,6 @@ export class AuthSeeder {
         moduleEntity = this.moduleRepository.create({
           name: moduleSeed.name,
           code: moduleSeed.code,
-          ...(moduleSeed.allowedActions && {
-            allowedActions: moduleSeed.allowedActions,
-          }),
         });
         moduleEntity = await this.moduleRepository.save(moduleEntity);
       }
@@ -142,9 +143,6 @@ export class AuthSeeder {
               name: child.name,
               code: child.code,
               parentId: moduleEntity.id,
-              ...(child.allowedActions && {
-                allowedActions: child.allowedActions,
-              }),
             });
             childModule = await this.moduleRepository.save(childModule);
           }
@@ -167,7 +165,6 @@ export class AuthSeeder {
         await this.createModulePermissions(moduleEntity);
     }
 
-    // Create roles and assign permissions dynamically
     for (const roleConfig of roleConfigs) {
       const role = await this.createRole(
         roleConfig.name,
@@ -201,12 +198,8 @@ export class AuthSeeder {
   private async createModulePermissions(
     module: ModuleEntity,
   ): Promise<Permission[]> {
-    const allowedActions = module.allowedActions?.length
-      ? module.allowedActions
-      : Object.values(ActionType);
-
     const permissions: Permission[] = [];
-    for (const actionType of allowedActions) {
+    for (const actionType of Object.values(ActionType)) {
       const existing = await this.permissionRepository.findOne({
         where: { moduleId: module.id, action: actionType },
       });
@@ -275,7 +268,7 @@ export class AuthSeeder {
           email,
           fullName: 'Suthinzar',
           phone: '095085730',
-          registrationStage: UserRegistrationStage.ACCOUNT_SETUP,
+          registrationStage: UserRegistrationStage.COMPLETED,
           password: 'passwordD123!@#',
         }),
       );

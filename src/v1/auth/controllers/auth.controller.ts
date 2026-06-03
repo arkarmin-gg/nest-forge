@@ -2,386 +2,301 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Patch,
   Post,
+  Put,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { AuthService } from '../services/auth.service';
-import { TwoFactorService } from '../services/two-factor.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { AuthenticatedUser } from '../interfaces/user.interface';
-import { Request } from 'express';
-import { LogActivity } from 'src/v1/activity-log/decorators/log-activity.decorator';
-import { LogAction } from 'src/v1/activity-log/constants/log-action.enum';
-import { RefreshTokenDto } from '../dto/refresh-token.dto';
-import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { ChangePasswordDto } from '../dto/change-password.dto';
-import { VerifyTwoFactorDto } from '../dto/verify-two-factor.dto';
-import { EnableTwoFactorDto } from '../dto/enable-two-factor.dto';
-import { DisableTwoFactorDto } from '../dto/disable-two-factor.dto';
-import { ResponseUtil } from 'src/common/utils/response.util';
-import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
-import { ForgotPasswordSendOTPDto } from '../dto/forgot-password-send-otp.dto';
-import { UserForgotPasswordSendOTPDto } from '../dto/user-forgot-password-send-otp.dto';
-import { VerifyPasswordResetOTPCodeDto } from '../dto/verify-password-reset-otp-code.dto';
-import { ResetPasswordDto } from '../dto/reset-password.dto';
-import { AdminLoginDto } from '../dto/admin-login.dto';
-import { UserLoginDto } from '../dto/user-login.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import { Request } from 'express';
+import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
+import { RequestTimeout } from 'src/common/decorators/request-timeout.decorator';
 import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { CurrentUser } from '../decorators/current-user.decorator';
+import { Public } from '../decorators/public.decorator';
+import { LogActivity } from 'src/v1/log/decorators/log-activity.decorator';
+import { LogAction } from 'src/v1/log/constants/log-action.enum';
+import { AdminLoginDto } from '../dto/admin-login.dto';
+import { ChangePasswordDto } from '../dto/change-password.dto';
+import { DisableTwoFactorDto } from '../dto/disable-two-factor.dto';
+import { EnableTwoFactorDto } from '../dto/enable-two-factor.dto';
+import { ForgotPasswordSendOTPDto } from '../dto/forgot-password-send-otp.dto';
+import { RefreshTokenDto } from '../dto/refresh-token.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
+import { UpdateProfileDto } from '../dto/update-profile.dto';
+import { UserAppleLoginDto } from '../dto/user-apple-login.dto';
+import { UserForgotPasswordSendOTPDto } from '../dto/user-forgot-password-send-otp.dto';
+import { UserGoogleLoginDto } from '../dto/user-google-login.dto';
+import { UserLoginDto } from '../dto/user-login.dto';
+import { UserRegisterAccountSetupDto } from '../dto/user-register-account-setup.dto';
 import { UserRegisterOTPRequestDto } from '../dto/user-register-otp-request.dto';
 import { UserRegisterOTPVerifyDto } from '../dto/user-register-otp-verify.dto';
-import { UserRegisterAccountSetupDto } from '../dto/user-register-account-setup.dto';
 import { UserRegisterPasswordSetupDto } from '../dto/user-register-password-setup.dto';
-import { UserGoogleLoginDto } from '../dto/user-google-login.dto';
-import { UserAppleLoginDto } from '../dto/user-apple-login.dto';
-import { Public } from '../decorators/public.decorator';
+import { VerifyPasswordResetOTPCodeDto } from '../dto/verify-password-reset-otp-code.dto';
+import { VerifyTwoFactorDto } from '../dto/verify-two-factor.dto';
+import { AuthenticatedUser } from '../interfaces/user.interface';
+import { AdminAuthService } from '../services/admin-auth.service';
+import { PasswordResetService } from '../services/password-reset.service';
+import { TokenService } from '../services/token.service';
+import { TwoFactorService } from '../services/two-factor.service';
+import { UserAuthService } from '../services/user-auth.service';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(
-    private authService: AuthService,
+    private userAuthService: UserAuthService,
+    private adminAuthService: AdminAuthService,
+    private tokenService: TokenService,
+    private passwordResetService: PasswordResetService,
     private twoFactorService: TwoFactorService,
   ) {}
 
-  @Post('admin-login')
+  @Public()
+  @Post('admin/login')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(@Body() loginDto: AdminLoginDto, @Req() request: Request) {
-    const result = await this.authService.adminLogin(loginDto, request);
-    return ResponseUtil.success(result, 'Admin login successful');
+    return this.adminAuthService.adminLogin(loginDto, request);
   }
 
-  @Post('user-login')
+  @Public()
+  @Post('user/login')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async userLogin(@Body() loginDto: UserLoginDto, @Req() request: Request) {
-    const result = await this.authService.userLogin(loginDto, request);
-    return ResponseUtil.success(result, 'User login successful');
+    return this.userAuthService.userLogin(loginDto, request);
   }
 
-  @Post('user/google-login')
+  @Public()
+  @Post('user/login/google')
   @HttpCode(200)
+  @RequestTimeout(30_000)
   async userGoogleLogin(
-    @Body() userGoogleLoginDto: UserGoogleLoginDto,
+    @Body() dto: UserGoogleLoginDto,
     @Req() request: Request,
   ) {
-    const result = await this.authService.userGoogleLogin(
-      userGoogleLoginDto,
-      request,
-    );
-    return ResponseUtil.success(result, 'User Google login successful');
+    return this.userAuthService.userGoogleLogin(dto, request);
   }
 
-  @Post('user/apple-login')
+  @Public()
+  @Post('user/login/apple')
   @HttpCode(200)
+  @RequestTimeout(30_000)
   async userAppleLogin(
-    @Body() userAppleLoginDto: UserAppleLoginDto,
+    @Body() dto: UserAppleLoginDto,
     @Req() request: Request,
   ) {
-    const result = await this.authService.userAppleLogin(
-      userAppleLoginDto,
-      request,
-    );
-    return ResponseUtil.success(result, 'User Apple login successful');
+    return this.userAuthService.userAppleLogin(dto, request);
   }
 
-  @Post('user-register-otp-request')
+  @Public()
+  @Post('register/otp')
   @HttpCode(200)
-  async userRegisterOTPRequest(
-    @Body() userRegisterOTPRequestDto: UserRegisterOTPRequestDto,
-  ) {
-    const result = await this.authService.userRegisterOTPRequest(
-      userRegisterOTPRequestDto,
-    );
-    return ResponseUtil.success(result, 'User register request successful');
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
+  async userRegisterOTPRequest(@Body() dto: UserRegisterOTPRequestDto) {
+    return this.userAuthService.userRegisterOTPRequest(dto);
   }
 
-  @Post('user-register-otp-verify')
+  @Public()
+  @Post('register/otp/verify')
   @HttpCode(200)
-  async userRegisterOTPVerify(
-    @Body() userRegisterOTPVerifyDto: UserRegisterOTPVerifyDto,
-  ) {
-    const result = await this.authService.userRegisterOTPVerify(
-      userRegisterOTPVerifyDto,
-    );
-    return ResponseUtil.success(result, 'User register OTP verify successful');
+  async userRegisterOTPVerify(@Body() dto: UserRegisterOTPVerifyDto) {
+    return this.userAuthService.userRegisterOTPVerify(dto);
   }
 
-  @Post('user-register-password-setup')
+  @Public()
+  @Post('register/password')
   @HttpCode(200)
-  async userRegisterPasswordSetup(
-    @Body() userRegisterPasswordSetupDto: UserRegisterPasswordSetupDto,
-  ) {
-    const result = await this.authService.userRegisterPasswordSetup(
-      userRegisterPasswordSetupDto,
-    );
-    return ResponseUtil.success(
-      result,
-      'User register password setup successful',
-    );
+  async userRegisterPasswordSetup(@Body() dto: UserRegisterPasswordSetupDto) {
+    return this.userAuthService.userRegisterPasswordSetup(dto);
   }
 
-  @Post('user-register-account-setup')
+  @Public()
+  @Post('register')
   @UseInterceptors(
     FileInterceptor('profileImage', profileImageInterceptorOptions),
   )
   @HttpCode(200)
+  @RequestTimeout(30_000)
   async userRegisterAccountSetup(
     @UploadedFile() file: Express.Multer.File,
-    @Body() userRegisterAccountSetupDto: UserRegisterAccountSetupDto,
+    @Body() dto: UserRegisterAccountSetupDto,
     @Req() request: Request,
   ) {
-    const result = await this.authService.userRegisterAccountSetup(
-      userRegisterAccountSetupDto,
-      file,
-      request,
-    );
-    return ResponseUtil.success(
-      result,
-      'User register account setup successful',
-    );
+    return this.userAuthService.userRegisterAccountSetup(dto, file, request);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(200)
-  async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
-    const result = await this.authService.refreshAccessToken(
-      refreshTokenDto.refreshToken,
-    );
-    return ResponseUtil.success(result, 'Token refreshed successfully');
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.tokenService.refreshAccessToken(dto.refreshToken);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Post('logout')
-  @HttpCode(200)
   @LogActivity({
     action: LogAction.LOGOUT,
-    description: 'User logged out successfully',
-    resourceType: 'user',
-    getResourceId: (result: AuthenticatedUser) => result.id?.toString(),
+    description: 'User logged out',
+    resourceType: 'Auth',
+    getResourceId: (_, req) =>
+      (req as unknown as { user?: { id?: string } }).user?.id,
   })
+  @HttpCode(200)
   async logout(
-    @Body() refreshTokenDto: RefreshTokenDto,
+    @Body() dto: RefreshTokenDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    await this.authService.logout(refreshTokenDto.refreshToken, user);
-    return ResponseUtil.success(null, 'Logout successful');
+    await this.userAuthService.logout(dto.refreshToken, user);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('profile')
+  @Get('me')
   @ResolvePresignedUrls('profileImageUrl')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
-    return ResponseUtil.success(user, 'Profile retrieved successfully');
+    return user;
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Patch('profile')
+  @Patch('me')
   @UseInterceptors(
     FileInterceptor('profileImage', profileImageInterceptorOptions),
   )
   @HttpCode(200)
+  @RequestTimeout(30_000)
   async updateProfile(
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,
-    @Body() updateProfileDto: UpdateProfileDto,
+    @Body() dto: UpdateProfileDto,
     @Req() request: Request,
   ) {
-    const updatedUser = await this.authService.updateProfile(
-      user.id,
-      user.subjectType,
-      updateProfileDto,
-      request,
-      file,
-    );
-    return ResponseUtil.success(updatedUser, 'Profile updated successfully');
+    if (user.subjectType === 'ADMIN') {
+      return this.adminAuthService.updateProfile(user.id, dto, request, file);
+    }
+    return this.userAuthService.updateProfile(user.id, dto, request, file);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Patch('change-password')
+  @Put('me/password')
   @HttpCode(200)
   async changePassword(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() changePasswordDto: ChangePasswordDto,
+    @Body() dto: ChangePasswordDto,
     @Req() request: Request,
   ) {
-    await this.authService.changePassword(
-      user.id,
-      user.subjectType,
-      changePasswordDto,
-      request,
-    );
-    return ResponseUtil.success(
-      null,
-      'Password changed successfully. Please login again.',
-    );
+    if (user.subjectType === 'ADMIN') {
+      await this.adminAuthService.changePassword(user.id, dto, request);
+    } else {
+      await this.userAuthService.changePassword(user.id, dto, request);
+    }
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Delete('profile')
+  @Delete('me')
   @HttpCode(200)
   async deleteProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
   ) {
-    await this.authService.deleteProfile(user.id, request);
-    return ResponseUtil.success(null, 'Profile deleted successfully');
+    if (user.subjectType === 'ADMIN') {
+      throw new ForbiddenException(
+        'Admins cannot delete their own account through this endpoint',
+      );
+    }
+    await this.userAuthService.deleteProfile(user.id, request);
   }
 
-  @Post('verify-2fa')
   @Public()
+  @Post('2fa/verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async verifyTwoFactor(
-    @Body() verifyTwoFactorDto: VerifyTwoFactorDto,
+    @Body() dto: VerifyTwoFactorDto,
     @Req() request: Request,
   ) {
-    const result = await this.authService.verifyTwoFactorAndLogin(
-      verifyTwoFactorDto.userId,
-      verifyTwoFactorDto.code,
+    return this.adminAuthService.verifyTwoFactorAndLogin(
+      dto.userId,
+      dto.code,
       request,
     );
-    return ResponseUtil.success(result, 'Two-factor authentication successful');
   }
 
-  @Post('enable-2fa-verify')
-  @Public()
+  @Post('2fa/enable')
   @HttpCode(200)
-  async enableTwoFactorVerify(@Body() verifyTwoFactorDto: VerifyTwoFactorDto) {
-    const result = await this.twoFactorService.verifyTwoFactor(
-      verifyTwoFactorDto.userId,
-      verifyTwoFactorDto.code,
-    );
-    return ResponseUtil.success(
-      result,
-      'Two-factor authentication enable successful',
-    );
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('enable-2fa')
-  @HttpCode(200)
-  @LogActivity({
-    action: LogAction.ENABLE_TWO_FACTOR,
-    description: 'Two-factor authentication enabled',
-    resourceType: 'user',
-    getResourceId: (result: AuthenticatedUser) => result.id?.toString(),
-  })
   async enableTwoFactor(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() enableTwoFactorDto: EnableTwoFactorDto,
+    @Body() dto: EnableTwoFactorDto,
   ) {
-    await this.twoFactorService.enableTwoFactor(
-      user.id,
-      enableTwoFactorDto.email,
-    );
-    return ResponseUtil.success(
-      null,
-      'Two-factor authentication enable verification code sent to email',
-    );
+    await this.twoFactorService.enableTwoFactor(user.id, dto.email);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('disable-2fa')
+  @Public()
+  @Post('2fa/enable/confirm')
   @HttpCode(200)
-  @LogActivity({
-    action: LogAction.DISABLE_TWO_FACTOR,
-    description: 'Two-factor authentication disabled',
-    resourceType: 'user',
-    getResourceId: (result: AuthenticatedUser) => result.id?.toString(),
-  })
+  async enableTwoFactorVerify(@Body() dto: VerifyTwoFactorDto) {
+    return this.twoFactorService.verifyTwoFactor(dto.userId, dto.code);
+  }
+
+  @Post('2fa/disable')
+  @HttpCode(200)
   async disableTwoFactor(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() disableTwoFactorDto: DisableTwoFactorDto,
+    @Body() dto: DisableTwoFactorDto,
   ) {
-    await this.twoFactorService.disableTwoFactor(
-      user.id,
-      disableTwoFactorDto.password,
-    );
-    return ResponseUtil.success(null, 'Two-factor authentication disabled');
+    await this.twoFactorService.disableTwoFactor(user.id, dto.password);
   }
 
-  @Post('otp/send/forgot-password')
+  @Public()
+  @Post('admin/forgot-password')
   @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   async forgotPasswordOTPSend(
-    @Body() forgotPasswordSendOtpDto: ForgotPasswordSendOTPDto,
+    @Body() dto: ForgotPasswordSendOTPDto,
     @Req() request: Request,
   ) {
-    const result = await this.authService.passwordResetOTPSend(
-      forgotPasswordSendOtpDto,
-      request,
-    );
-    return ResponseUtil.success(
-      result,
-      'Forgot password reset OTP code sent to your email',
-    );
+    return this.passwordResetService.passwordResetOTPSend(dto, request);
   }
 
-  @Post('otp/verify/forgot-password')
+  @Public()
+  @Post('admin/forgot-password/verify')
   @HttpCode(200)
-  async passwordResetOTPVerify(
-    @Body() verifyPasswordResetOTPCodeDto: VerifyPasswordResetOTPCodeDto,
-  ) {
-    const result = await this.authService.verifyPasswordResetOTPCode(
-      verifyPasswordResetOTPCodeDto,
-    );
-    return ResponseUtil.success(
-      result,
-      'Successfully verify password reset code',
-    );
+  async passwordResetOTPVerify(@Body() dto: VerifyPasswordResetOTPCodeDto) {
+    return this.passwordResetService.verifyPasswordResetOTPCode(dto);
   }
 
-  @Post('reset-password')
+  @Public()
+  @Post('admin/reset-password')
   @HttpCode(200)
-  async resetPassword(
-    @Body() resetPasswordDto: ResetPasswordDto,
-    @Req() request: Request,
-  ) {
-    await this.authService.resetPassword(resetPasswordDto, request);
-    return ResponseUtil.success(null, 'Successfully reset your password');
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() request: Request) {
+    await this.passwordResetService.resetPassword(dto, request);
   }
 
-  @Post('user/otp/send/forgot-password')
+  @Public()
+  @Post('user/forgot-password')
   @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   async userForgotPasswordOTPSend(
-    @Body() userForgotPasswordSendOtpDto: UserForgotPasswordSendOTPDto,
+    @Body() dto: UserForgotPasswordSendOTPDto,
     @Req() request: Request,
   ) {
-    const result = await this.authService.userPasswordResetOTPSend(
-      userForgotPasswordSendOtpDto,
-      request,
-    );
-    return ResponseUtil.success(
-      result,
-      'Forgot password reset OTP code sent to your phone',
-    );
+    return this.passwordResetService.userPasswordResetOTPSend(dto, request);
   }
 
-  @Post('user/otp/verify/forgot-password')
+  @Public()
+  @Post('user/forgot-password/verify')
   @HttpCode(200)
-  async userPasswordResetOTPVerify(
-    @Body() verifyPasswordResetOTPCodeDto: VerifyPasswordResetOTPCodeDto,
-  ) {
-    const result = await this.authService.userVerifyPasswordResetOTPCode(
-      verifyPasswordResetOTPCodeDto,
-    );
-    return ResponseUtil.success(
-      result,
-      'Successfully verify password reset code',
-    );
+  async userPasswordResetOTPVerify(@Body() dto: VerifyPasswordResetOTPCodeDto) {
+    return this.passwordResetService.userVerifyPasswordResetOTPCode(dto);
   }
 
+  @Public()
   @Post('user/reset-password')
   @HttpCode(200)
   async userResetPassword(
-    @Body() resetPasswordDto: ResetPasswordDto,
+    @Body() dto: ResetPasswordDto,
     @Req() request: Request,
   ) {
-    await this.authService.userResetPassword(resetPasswordDto, request);
-    return ResponseUtil.success(null, 'Successfully reset your password');
+    await this.passwordResetService.userResetPassword(dto, request);
   }
 }
