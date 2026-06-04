@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as nodemailer from 'nodemailer';
-import { Setting } from 'src/v1/setting/entities/setting.entity';
+import { Setting } from 'src/modules/setting/entities/setting.entity';
 import { ConfigService } from '@nestjs/config';
 import { isOtpMockEnabled } from './otp-mock.util';
 import { SMTP_CACHE_TTL_MS as SMTP_TTL } from './date-time.util';

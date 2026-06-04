@@ -1,5 +1,7 @@
 # Changelog
 
+## [2.0.0](https://github-personal/Kei-K23/nestjs-typeorm-api-starter-v2/compare/v1.0.0...v2.0.0) (2026-06-04)
+
 ## 1.0.0 (2026-06-03)
 
 ### Features

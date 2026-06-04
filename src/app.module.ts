@@ -2,18 +2,19 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { JwtAuthGuard } from './v1/auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { envValidationSchema } from './common/config/env.validation';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UserModule } from './v1/user/user.module';
-import { AuthModule } from './v1/auth/auth.module';
-import { ActivityLogModule } from './v1/log/activity-log.module';
-import { ActivityLogInterceptor } from './v1/log/interceptors/activity-log.interceptor';
-import { SettingModule } from './v1/setting/setting.module';
-import { AdminModule } from './v1/admin/admin.module';
+import { UserModule } from 'src/modules/user/user.module';
+import { AuthModule } from 'src/modules/auth/auth.module';
+import { ActivityLogModule } from 'src/modules/log/activity-log.module';
+import { ActivityLogInterceptor } from 'src/modules/log/interceptors/activity-log.interceptor';
+import { SettingModule } from 'src/modules/setting/setting.module';
+import { AdminModule } from 'src/modules/admin/admin.module';
+import { RoleModule } from 'src/modules/role/role.module';
 import { CommonModule } from './common/common.module';
 import dataSource from './data-source';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -21,8 +22,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CacheModule } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-store';
-import { NotificationModule } from './notification/notification.module';
-import { HealthModule } from './health/health.module';
+import { NotificationModule } from 'src/infrastructure/notification/notification.module';
+import { HealthModule } from 'src/infrastructure/health/health.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { HealthModule } from './health/health.module';
     ActivityLogModule,
     UserModule,
     AdminModule,
+    RoleModule,
     SettingModule,
     HealthModule,
   ],

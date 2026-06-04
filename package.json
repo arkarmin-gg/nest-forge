@@ -1,6 +1,6 @@
 {
   "name": "nest-forge",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Production-ready NestJS API foundation with auth, queues, storage, and caching",
   "author": "Kei-K23",
   "private": true,
