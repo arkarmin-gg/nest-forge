@@ -81,6 +81,9 @@ A production-ready NestJS API foundation with integrated authentication, authori
 | Auth | JWT, bcryptjs, OTP, OAuth (Google, Apple) |
 | File Storage | AWS S3 |
 | Validation | class-validator, class-transformer, Joi |
+| Logging | Winston + nest-winston + daily-rotate-file |
+| Scheduling | @nestjs/schedule |
+| CLI | Commander |
 | Testing | Jest |
 | Process Manager | PM2 (production) |
 | CI/CD | GitHub Actions |
@@ -92,6 +95,12 @@ A production-ready NestJS API foundation with integrated authentication, authori
 The project follows a **modular monolith** architecture with a clear separation between the API layer, domain modules, and infrastructure.
 
 ```
+cli/                                # Forge CLI (commander-based)
+│   ├── commands/
+│   │   ├── db.ts                   # Registers `forge db` command group
+│   │   ├── migrate.ts              # `forge db migrate generate|run|revert`
+│   │   └── seed.ts                 # `forge db seed|clear|reset`
+│   └── index.ts                    # CLI entry point
 src/
 ├── api/v1/                         # API layer — controllers only (thin, no business logic)
 │   ├── auth/                       # Auth, roles, and permissions controllers
@@ -115,10 +124,13 @@ src/
 │   ├── otp/                        # OTP entity and service
 │   ├── role/                       # Role module (re-exports from auth module)
 │   ├── log/                        # Activity & audit logging
+│   │   ├── constants/              # Log-related constants
 │   │   ├── decorators/             # @LogActivity
+│   │   ├── dto/                    # Log query DTOs
 │   │   ├── entities/               # ActivityLog, AuditLog entities
 │   │   ├── events/                 # Log domain events
 │   │   ├── interceptors/           # ActivityLogInterceptor
+│   │   ├── interfaces/             # Log payload interfaces
 │   │   ├── listeners/              # LogListener (event → persistence)
 │   │   ├── services/               # ActivityLogService, AuditLogService
 │   │   └── utils/                  # Audit log metadata helpers
@@ -141,11 +153,11 @@ src/
 │   ├── interceptors/               # ResponseInterceptor, TimeoutInterceptor, PresignedUrlInterceptor
 │   ├── interfaces/                 # ApiResponse interface
 │   ├── middleware/                 # RequestIdMiddleware
-│   ├── mixins/                     # PasswordHashMixin
+│   ├── pipes/                      # TrimPipe
 │   ├── services/                   # FileUploadService, StartupService
 │   ├── transaction/                # @Transactional decorator + AsyncLocalStorage context
 │   ├── utils/                      # Email, SMS, OTP mock, password hash, S3 client, etc.
-│   └── validators/                 # Custom class-validator validators (e.g. NRC format)
+│   └── validators/                 # Custom class-validator validators (NRC format, password)
 ├── seeders/                        # Root seeder entry points (seed.ts, clear.ts)
 ├── types/                          # Global TypeScript type extensions
 ├── main.ts                         # Application bootstrap
@@ -549,6 +561,8 @@ async transferFunds(fromId: string, toId: string, amount: number): Promise<void>
 
 ## Scripts
 
+### npm scripts
+
 | Script | Description |
 |---|---|
 | `npm run start:dev` | Start with watch mode (development) |
@@ -563,13 +577,38 @@ async transferFunds(fromId: string, toId: string, amount: number): Promise<void>
 | `npm run migration:generate -- src/database/migrations/Name` | Generate migration from entity changes |
 | `npm run migration:run` | Apply pending migrations (dev) |
 | `npm run migration:run:prod` | Apply pending migrations (prod, compiled) |
-| `npm run migration:revert` | Revert last migration |
+| `npm run migration:revert` | Revert last migration (dev) |
+| `npm run migration:revert:prod` | Revert last migration (prod, compiled) |
 | `npm run db:seed` | Seed initial roles, permissions, and a default admin |
 | `npm run db:clear` | Truncate seeded tables |
 | `npm run db:reset` | db:clear + db:seed |
 | `npm run release` | Bump patch version + update CHANGELOG |
 | `npm run release:minor` | Bump minor version + update CHANGELOG |
 | `npm run release:major` | Bump major version + update CHANGELOG |
+
+### forge CLI
+
+The `forge` CLI (in `cli/`) wraps common database operations under a single unified interface:
+
+```bash
+# Generate a new migration (output goes to src/infrastructure/database/migrations/)
+npx ts-node cli/index.ts db migrate generate <MigrationName>
+
+# Apply pending migrations
+npx ts-node cli/index.ts db migrate run
+
+# Revert the last applied migration
+npx ts-node cli/index.ts db migrate revert
+
+# Seed initial data
+npx ts-node cli/index.ts db seed
+
+# Truncate seeded tables
+npx ts-node cli/index.ts db clear
+
+# Clear then re-seed
+npx ts-node cli/index.ts db reset
+```
 
 ---
 
