@@ -58,7 +58,7 @@ export class ActivityLog {
   @Column({ type: 'enum', enum: LogStatus, default: LogStatus.SUCCESS })
   status!: LogStatus;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown>;
 
   @CreateDateColumn({ type: 'timestamptz' })

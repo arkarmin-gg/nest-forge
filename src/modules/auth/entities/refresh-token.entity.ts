@@ -1,13 +1,23 @@
-import { Entity, Column, ManyToOne, JoinColumn, Relation } from 'typeorm';
-import { User } from 'src/modules/user/entities/user.entity';
-import { Admin } from 'src/modules/admin/entities/admin.entity';
 import { AuditEntity } from 'src/common/entities/audit.entity';
+import { Admin } from 'src/modules/admin/entities/admin.entity';
+import { User } from 'src/modules/user/entities/user.entity';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  Relation,
+} from 'typeorm';
 
 @Entity('refresh_tokens')
+@Index(['userId', 'isRevoked'])
+@Index(['adminId', 'isRevoked'])
 export class RefreshToken extends AuditEntity {
-  @Column()
-  token!: string;
+  @Column({ unique: true })
+  tokenHash!: string;
 
+  @Index()
   @Column({ nullable: true })
   userId!: string;
 
@@ -17,6 +27,7 @@ export class RefreshToken extends AuditEntity {
   @JoinColumn({ name: 'userId' })
   user!: Relation<User>;
 
+  @Index()
   @Column({ nullable: true })
   adminId!: string;
 
@@ -24,8 +35,9 @@ export class RefreshToken extends AuditEntity {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'adminId' })
-  admin!: Admin;
+  admin!: Relation<Admin>;
 
+  @Index()
   @Column({ type: 'timestamptz', nullable: true })
   expiresAt!: Date | null;
 

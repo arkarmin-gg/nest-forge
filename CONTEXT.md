@@ -35,7 +35,7 @@ A user with `registrationStage = COMPLETED` is considered to already exist for t
 
 ## OtpRecord (formerly CacheKey)
 
-An `OtpRecord` is a short-lived verification record used to validate a one-time code. It tracks the code (or a provider `requestId`), expiry time, attempt count, and current status.
+An `OtpRecord` is a short-lived verification record used to validate a one-time code. The code is stored as a **SHA-256 hash** (`codeHash`) — never in plaintext, mirroring how `RefreshToken` is stored. It also tracks an optional provider `requestId`, expiry time, attempt count, and current status.
 
 **OtpPurpose** (formerly `CacheKeyService`) — the reason the OTP was issued:
 - `TWO_FACTOR` — used to verify a 2FA login challenge.

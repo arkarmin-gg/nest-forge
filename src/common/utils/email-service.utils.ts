@@ -77,14 +77,20 @@ export class EmailServiceUtils {
     });
 
     this.smtpConfigCache = {
-      smtpHost: this.getSettingValue(settings, 'smtp_host'),
-      smtpPort: parseInt(this.getSettingValue(settings, 'smtp_port') || '587'),
-      smtpSecure: this.getSettingValue(settings, 'smtp_secure') === 'true',
-      smtpUsername: this.getSettingValue(settings, 'smtp_username'),
-      smtpPassword: this.getSettingValue(settings, 'smtp_password'),
-      smtpFromEmail: this.getSettingValue(settings, 'smtp_from_email'),
-      smtpFromName: this.getSettingValue(settings, 'smtp_from_name'),
-      smtpEnabled: this.getSettingValue(settings, 'smtp_enabled') === 'true',
+      smtpHost: this.getSettingValue<string>(settings, 'smtp_host') ?? '',
+      smtpPort: this.getSettingValue<number>(settings, 'smtp_port') ?? 587,
+      smtpSecure:
+        this.getSettingValue<boolean>(settings, 'smtp_secure') ?? false,
+      smtpUsername:
+        this.getSettingValue<string>(settings, 'smtp_username') ?? '',
+      smtpPassword:
+        this.getSettingValue<string>(settings, 'smtp_password') ?? '',
+      smtpFromEmail:
+        this.getSettingValue<string>(settings, 'smtp_from_email') ?? '',
+      smtpFromName:
+        this.getSettingValue<string>(settings, 'smtp_from_name') ?? '',
+      smtpEnabled:
+        this.getSettingValue<boolean>(settings, 'smtp_enabled') ?? false,
     };
     this.smtpConfigCachedAt = now;
 
@@ -96,9 +102,11 @@ export class EmailServiceUtils {
     this.smtpConfigCachedAt = 0;
   }
 
-  private getSettingValue(settings: Setting[], key: string): string {
-    const setting = settings.find((s) => s.key === key);
-    return setting?.value || '';
+  private getSettingValue<T = unknown>(
+    settings: Setting[],
+    key: string,
+  ): T | undefined {
+    return settings.find((s) => s.key === key)?.value as T | undefined;
   }
 
   async sendTwoFactorCode({

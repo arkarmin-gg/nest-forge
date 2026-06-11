@@ -6,6 +6,10 @@ export class Setting extends BaseEntity {
   @Column({ nullable: false, unique: true })
   key!: string;
 
-  @Column({ nullable: true, default: '' })
-  value!: string;
+  // Stored as jsonb so values keep their native type (string | number | boolean | object).
+  @Column({ type: 'jsonb', default: {} })
+  value!: unknown;
+
+  @Column({ type: 'text', nullable: true })
+  description!: string | null;
 }

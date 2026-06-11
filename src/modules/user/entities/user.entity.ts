@@ -39,7 +39,7 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   fullName!: string;
 
-  @Column()
+  @Column({ unique: true })
   phone!: string;
 
   @Column({ nullable: true })
@@ -66,9 +66,8 @@ export class User extends BaseEntity {
     type: 'enum',
     enum: UserRegistrationStage,
     default: UserRegistrationStage.OTP_VERIFIED,
-    nullable: true,
   })
-  registrationStage?: UserRegistrationStage;
+  registrationStage!: UserRegistrationStage;
 
   @Column({ type: 'varchar', nullable: true })
   fcmToken?: string | null;
@@ -85,10 +84,10 @@ export class User extends BaseEntity {
   @OneToMany(() => OtpRecord, (record) => record.user)
   otpRecords?: OtpRecord[];
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', nullable: true, unique: true })
   googleId?: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', nullable: true, unique: true })
   appleId?: string;
 
   @Column({ type: 'varchar', nullable: true })

@@ -36,6 +36,7 @@ export enum PermissionModule {
 @Entity('permissions')
 @Index(['moduleId', 'action'], { unique: true })
 export class Permission extends BaseEntity {
+  @Index()
   @Column('uuid')
   moduleId!: string;
 

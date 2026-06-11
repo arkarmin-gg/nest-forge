@@ -1,0 +1,336 @@
+// =====================================================================
+// nest-forge — Database ERD (dbdiagram.io / DBML format) — REVISED
+// Generated from TypeORM entities.
+//
+// Base columns (from abstract entities):
+//   BaseEntity  -> id (uuid, pk), createdAt, updatedAt, deletedAt (soft delete)
+//   AuditEntity -> id (uuid, pk), createdAt, updatedAt
+//
+// NOTE: DBML cannot express CHECK constraints. Two are required and must
+// be added in a migration (see "Constraints to add in migration" below).
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------
+
+Enum action_type {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+}
+
+Enum otp_status {
+  PENDING
+  VERIFIED
+  EXPIRED
+  USED
+}
+
+Enum otp_purpose {
+  TWO_FACTOR
+  RESET_PASSWORD
+}
+
+Enum log_action {
+  LOGIN
+  LOGOUT
+  REGISTER
+  UPDATE_PROFILE
+  CHANGE_PASSWORD
+  FORGOT_PASSWORD_OTP
+  RESET_PASSWORD
+  ENABLE_TWO_FACTOR
+  DISABLE_TWO_FACTOR
+  VERIFY_TWO_FACTOR
+  DELETE_ACCOUNT
+  CREATE
+  UPDATE
+  DELETE
+}
+
+Enum log_status {
+  SUCCESS
+  FAILURE
+}
+
+Enum user_registration_stage {
+  OTP_VERIFIED
+  PASSWORD_SET
+  COMPLETED
+}
+
+Enum login_provider {
+  SMS
+  GOOGLE
+  APPLE
+}
+
+// ---------------------------------------------------------------------
+// Admin & RBAC
+// ---------------------------------------------------------------------
+
+Table admins {
+  id uuid [pk]
+  fullName varchar [not null]
+  password varchar [null, note: 'hashed; excluded from serialization']
+  email varchar [unique, not null]
+  profileImageUrl varchar [null]
+  roleId uuid [not null]
+  isBanned boolean [not null, default: false]
+  isTwoFactorEnabled boolean [not null, default: false]
+  lastLoginAt timestamptz [null]
+  lastLogoutAt timestamptz [null]
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+  deletedAt timestamptz [null]
+
+  Indexes {
+    fullName
+    isBanned
+    roleId
+    deletedAt
+  }
+}
+
+Table roles {
+  id uuid [pk]
+  name varchar [unique, not null]   // was non-unique
+  description varchar [null]
+  rank int [not null, default: 99, note: 'lower rank = higher privilege (1 = superadmin)']
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+  deletedAt timestamptz [null]
+
+  Indexes {
+    deletedAt
+  }
+}
+
+Table modules {
+  id uuid [pk]
+  name varchar [not null]
+  code varchar [unique, not null]
+  parentId uuid [null, note: 'self-referencing tree']
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+  deletedAt timestamptz [null]
+
+  Indexes {
+    parentId
+    deletedAt
+  }
+}
+
+Table permissions {
+  id uuid [pk]
+  moduleId uuid [not null]
+  action action_type [not null]
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+  deletedAt timestamptz [null]
+
+  Indexes {
+    moduleId                    // FK index (was missing)
+    (moduleId, action) [unique]
+    deletedAt
+  }
+}
+
+Table role_permissions {
+  roleId uuid [pk]
+  permissionId uuid [pk]
+
+  Indexes {
+    // Composite PK already enforces uniqueness + forward lookup.
+    permissionId                // reverse lookup: roles holding a permission
+  }
+}
+
+// ---------------------------------------------------------------------
+// Application Users
+// ---------------------------------------------------------------------
+
+Table users {
+  id uuid [pk]
+  email varchar [null]
+  fullName varchar [null]
+  phone varchar [unique, not null]   // SMS auth identity
+  password varchar [null, note: 'hashed; excluded from serialization']
+  isBanned boolean [not null, default: false]
+  profileImageUrl varchar [null]
+  dateOfBirth varchar [null]
+  gender varchar [null]
+  preferLanguage varchar [null]
+  registrationStage user_registration_stage [not null, default: 'OTP_VERIFIED']
+  fcmToken varchar [null]
+  lastLoginAt timestamptz [null]
+  lastLogoutAt timestamptz [null]
+  googleId varchar [unique, null]
+  appleId varchar [unique, null]
+  loginProvider login_provider [null]
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+  deletedAt timestamptz [null]
+
+  Indexes {
+    email
+    fullName
+    isBanned
+    deletedAt
+  }
+}
+
+// ---------------------------------------------------------------------
+// Auth — Refresh Tokens & OTP
+// ---------------------------------------------------------------------
+
+Table refresh_tokens {
+  id uuid [pk]
+  tokenHash varchar [unique, not null]   // was plaintext `token`
+  userId uuid [null]
+  adminId uuid [null]
+  expiresAt timestamptz [null]
+  isRevoked boolean [not null, default: false]
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+
+  Indexes {
+    tokenHash
+    userId
+    adminId
+    expiresAt
+    (userId, isRevoked)
+    (adminId, isRevoked)
+  }
+}
+
+Table otp_records {
+  id uuid [pk]
+  userId uuid [null]
+  adminId uuid [null]
+  status otp_status [not null, default: 'PENDING']
+  purpose otp_purpose [not null]
+  codeHash varchar [not null]            // was plaintext `code`
+  expiresAt timestamptz [not null]
+  requestId varchar [null]
+  attempts int [not null, default: 0]
+  maxAttempts int [not null, default: 3]
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+
+  Indexes {
+    userId
+    adminId
+    expiresAt
+    (userId, purpose, status)
+    (adminId, purpose, status)
+  }
+}
+
+// ---------------------------------------------------------------------
+// Logs (high-volume, integer PK — consider range partitioning on createdAt)
+// ---------------------------------------------------------------------
+
+Table activity_logs {
+  id int [pk, increment]
+  userId uuid [not null]
+  action log_action [not null]
+  description text [not null]
+  resourceType varchar [null]
+  resourceId varchar [null]
+  ipAddress varchar [null]
+  userAgent varchar [null]
+  device varchar [null]
+  browser varchar [null]
+  os varchar [null]
+  location varchar [null]
+  status log_status [not null, default: 'SUCCESS']
+  metadata jsonb [null]                  // was json
+  createdAt timestamptz [not null]
+
+  Indexes {
+    (userId, action, createdAt)
+  }
+}
+
+Table audit_logs {
+  id int [pk, increment]
+  adminId uuid [null, note: 'SET NULL: audit history survives admin deletion']
+  action log_action [not null]
+  description text [not null]
+  entityName varchar [null]
+  entityId varchar [null]
+  oldValue jsonb [null]                  // was json
+  newValue jsonb [null]                  // was json
+  ipAddress varchar [null]
+  userAgent varchar [null]
+  device varchar [null]
+  browser varchar [null]
+  os varchar [null]
+  location varchar [null]
+  status log_status [not null, default: 'SUCCESS']
+  metadata jsonb [null]                  // was json
+  createdAt timestamptz [not null]
+
+  Indexes {
+    (adminId, action, createdAt)
+    (entityName, entityId)
+  }
+}
+
+// ---------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------
+
+Table settings {
+  id uuid [pk]
+  key varchar [unique, not null]
+  value jsonb [not null, default: '{}']  // was nullable varchar
+  description text [null]
+  createdAt timestamptz [not null]
+  updatedAt timestamptz [not null]
+  deletedAt timestamptz [null]
+
+  Indexes {
+    deletedAt
+  }
+}
+
+// ---------------------------------------------------------------------
+// Relationships
+// ---------------------------------------------------------------------
+
+// Admin RBAC
+Ref: admins.roleId > roles.id [delete: restrict]
+Ref: permissions.moduleId > modules.id [delete: cascade]
+Ref: modules.parentId > modules.id [delete: set null]
+Ref: role_permissions.roleId > roles.id [delete: cascade]
+Ref: role_permissions.permissionId > permissions.id [delete: cascade]
+
+// Refresh tokens (polymorphic: user XOR admin — see CHECK below)
+Ref: refresh_tokens.userId > users.id [delete: cascade]
+Ref: refresh_tokens.adminId > admins.id [delete: cascade]
+
+// OTP records (polymorphic: user XOR admin — see CHECK below)
+Ref: otp_records.userId > users.id [delete: cascade]   // was missing delete rule
+Ref: otp_records.adminId > admins.id [delete: cascade]
+
+// Logs
+Ref: activity_logs.userId > users.id [delete: cascade]
+Ref: audit_logs.adminId > admins.id [delete: set null]
+
+// ---------------------------------------------------------------------
+// Constraints to add in migration (not expressible in DBML)
+// ---------------------------------------------------------------------
+//
+//  -- Exactly one owner on polymorphic auth tables:
+//  ALTER TABLE refresh_tokens ADD CONSTRAINT chk_refresh_owner
+//    CHECK ((userId IS NOT NULL) <> (adminId IS NOT NULL));
+//
+//  ALTER TABLE otp_records ADD CONSTRAINT chk_otp_owner
+//    CHECK ((userId IS NOT NULL) <> (adminId IS NOT NULL));
+//
+//  -- Optional: enforce password presence for local-auth users/admins
+//  -- in application logic or a CHECK keyed off loginProvider.

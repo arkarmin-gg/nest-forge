@@ -65,7 +65,9 @@ export class AdminAuthService {
       'admin',
     );
 
-    await this.adminService.updateFields(admin.id, { lastLoginAt });
+    await this.adminService.updateFields(admin.id, {
+      lastLoginAt: new Date(),
+    });
 
     this.logger.log(`Admin with ID '${admin.id}' logged in successfully`);
 

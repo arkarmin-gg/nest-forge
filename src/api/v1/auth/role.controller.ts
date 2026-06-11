@@ -14,12 +14,12 @@ import {
 } from '@nestjs/common';
 import {
   CreateRoleDto,
-  FilterRoleDto,
-  PermissionModule,
-  PermissionsGuard,
-  RequirePermissions,
-  UpdateRoleDto,
-} from 'src/modules/auth';
+} from 'src/modules/auth/dto/create-role.dto';
+import { FilterRoleDto } from 'src/modules/auth/dto/filter-role.dto';
+import { UpdateRoleDto } from 'src/modules/auth/dto/update-role.dto';
+import { RequirePermissions } from 'src/modules/auth/decorators/permissions.decorator';
+import { PermissionModule } from 'src/modules/auth/entities/permission.entity';
+import { PermissionsGuard } from 'src/modules/auth/guards/permissions.guard';
 import { LogAction, LogActivity } from 'src/modules/log';
 import { RoleService } from 'src/modules/role';
 

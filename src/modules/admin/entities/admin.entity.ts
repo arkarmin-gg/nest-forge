@@ -30,6 +30,7 @@ export class Admin extends BaseEntity {
   @Column({ nullable: true })
   profileImageUrl!: string;
 
+  @Index()
   @Column()
   roleId!: string;
 

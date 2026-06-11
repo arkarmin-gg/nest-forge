@@ -16,11 +16,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
 import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
-import {
-  PermissionModule,
-  PermissionsGuard,
-  RequirePermissions,
-} from 'src/modules/auth';
+import { RequirePermissions } from 'src/modules/auth/decorators/permissions.decorator';
+import { PermissionModule } from 'src/modules/auth/entities/permission.entity';
+import { PermissionsGuard } from 'src/modules/auth/guards/permissions.guard';
 import { LogAction, LogActivity } from 'src/modules/log';
 import {
   CreateUserDto,

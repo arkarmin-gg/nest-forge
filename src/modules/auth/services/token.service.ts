@@ -3,13 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import * as crypto from 'crypto';
 import {
   addDays,
   isExpired,
   nowUtc,
   REFRESH_TOKEN_TTL_DAYS,
 } from 'src/common/utils/date-time.util';
+import { sha256Hex } from 'src/common/utils/hash.util';
 import { AdminService } from 'src/modules/admin';
 import { UserService } from 'src/modules/user';
 import { Repository } from 'typeorm';
@@ -49,11 +49,11 @@ export class TokenService {
       },
     );
 
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHash = sha256Hex(token);
     const expiresAt = addDays(REFRESH_TOKEN_TTL_DAYS);
 
     const refreshToken = this.refreshTokenRepository.create({
-      token: tokenHash,
+      tokenHash,
       ...(ownerType === 'user' ? { userId: ownerId } : { adminId: ownerId }),
       expiresAt,
     });
@@ -63,13 +63,10 @@ export class TokenService {
   }
 
   async refreshAccessToken(refreshTokenString: string) {
-    const tokenHash = crypto
-      .createHash('sha256')
-      .update(refreshTokenString)
-      .digest('hex');
+    const tokenHash = sha256Hex(refreshTokenString);
 
     const refreshToken = await this.refreshTokenRepository.findOne({
-      where: { token: tokenHash, isRevoked: false },
+      where: { tokenHash, isRevoked: false },
       relations: [
         'user',
         'admin',
@@ -179,13 +176,10 @@ export class TokenService {
   }
 
   async revokeToken(refreshTokenString: string): Promise<void> {
-    const tokenHash = crypto
-      .createHash('sha256')
-      .update(refreshTokenString)
-      .digest('hex');
+    const tokenHash = sha256Hex(refreshTokenString);
 
     const refreshToken = await this.refreshTokenRepository.findOne({
-      where: { token: tokenHash },
+      where: { tokenHash },
     });
 
     if (refreshToken) {

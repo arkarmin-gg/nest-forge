@@ -13,6 +13,7 @@ import { LogStatus } from '../constants/log-status.enum';
 
 @Entity('audit_logs')
 @Index(['adminId', 'action', 'createdAt'])
+@Index(['entityName', 'entityId'])
 export class AuditLog {
   // Integer PK intentional: high-volume append-only log table (avoids UUID overhead)
   @PrimaryGeneratedColumn()
@@ -38,10 +39,10 @@ export class AuditLog {
   @Column({ nullable: true })
   entityId!: string;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   oldValue!: Record<string, unknown>;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   newValue!: Record<string, unknown>;
 
   @Column({ nullable: true })
@@ -65,7 +66,7 @@ export class AuditLog {
   @Column({ type: 'enum', enum: LogStatus, default: LogStatus.SUCCESS })
   status!: LogStatus;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown>;
 
   @CreateDateColumn({ type: 'timestamptz' })

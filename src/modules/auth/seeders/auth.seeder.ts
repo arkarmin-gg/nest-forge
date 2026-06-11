@@ -24,6 +24,7 @@ interface RoleConfig {
 interface ModuleSeed {
   name: string;
   code: PermissionModule;
+  parentId?: string | null;
   children?: {
     name: string;
     code: PermissionModule;
@@ -120,32 +121,14 @@ export class AuthSeeder {
     const createdModules: ModuleEntity[] = [];
 
     for (const moduleSeed of modulesToSeed) {
-      let moduleEntity = await this.moduleRepository.findOne({
-        where: { code: moduleSeed.code },
-      });
-
-      if (!moduleEntity) {
-        moduleEntity = this.moduleRepository.create({
-          name: moduleSeed.name,
-          code: moduleSeed.code,
-        });
-        moduleEntity = await this.moduleRepository.save(moduleEntity);
-      }
+      const moduleEntity = await this.upsertModule(moduleSeed);
 
       if (moduleSeed.children && moduleSeed.children.length > 0) {
         for (const child of moduleSeed.children) {
-          let childModule = await this.moduleRepository.findOne({
-            where: { code: child.code, parentId: moduleEntity.id },
+          const childModule = await this.upsertModule({
+            ...child,
+            parentId: moduleEntity.id,
           });
-
-          if (!childModule) {
-            childModule = this.moduleRepository.create({
-              name: child.name,
-              code: child.code,
-              parentId: moduleEntity.id,
-            });
-            childModule = await this.moduleRepository.save(childModule);
-          }
 
           createdModules.push(childModule);
         }
@@ -169,6 +152,7 @@ export class AuthSeeder {
       const role = await this.createRole(
         roleConfig.name,
         roleConfig.description,
+        roleConfig.rank,
       );
       createdRoles.push(role);
 
@@ -187,11 +171,63 @@ export class AuthSeeder {
     await this.createNormalUser();
   }
 
-  private async createRole(name: string, description: string): Promise<Role> {
+  private async upsertModule(moduleSeed: ModuleSeed): Promise<ModuleEntity> {
+    const parentId = moduleSeed.parentId ?? null;
+    const existingModule = await this.moduleRepository.findOne({
+      where: { code: moduleSeed.code },
+    });
+
+    if (existingModule) {
+      const shouldUpdate =
+        existingModule.name !== moduleSeed.name ||
+        (existingModule.parentId ?? null) !== parentId;
+
+      if (shouldUpdate) {
+        existingModule.name = moduleSeed.name;
+        existingModule.parentId = parentId ?? undefined;
+        return this.moduleRepository.save(existingModule);
+      }
+
+      return existingModule;
+    }
+
+    return this.moduleRepository.save(
+      this.moduleRepository.create({
+        name: moduleSeed.name,
+        code: moduleSeed.code,
+        parentId: parentId ?? undefined,
+      }),
+    );
+  }
+
+  private async createRole(
+    name: string,
+    description: string,
+    rank?: number,
+  ): Promise<Role> {
     const existingRole = await this.roleRepository.findOne({ where: { name } });
-    if (existingRole) return existingRole;
+    if (existingRole) {
+      const shouldUpdate =
+        existingRole.description !== description ||
+        (rank !== undefined && existingRole.rank !== rank);
+
+      if (shouldUpdate) {
+        existingRole.description = description;
+        if (rank !== undefined) {
+          existingRole.rank = rank;
+        }
+        return this.roleRepository.save(existingRole);
+      }
+
+      return existingRole;
+    }
+
     return this.roleRepository.save(
-      this.roleRepository.create({ name, description }),
+      this.roleRepository.create({
+        name,
+        description,
+        ...(rank !== undefined && { rank }),
+      }),
     );
   }
 

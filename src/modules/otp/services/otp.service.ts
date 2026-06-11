@@ -11,6 +11,7 @@ import {
   isExpired,
   OTP_TTL_MINUTES,
 } from 'src/common/utils/date-time.util';
+import { sha256Hex } from 'src/common/utils/hash.util';
 import { Cron } from '@nestjs/schedule';
 
 @Injectable()
@@ -35,7 +36,7 @@ export class OtpService {
 
     const record = this.otpRecordRepository.create({
       purpose: opts.purpose,
-      code: opts.code,
+      codeHash: sha256Hex(opts.code),
       userId: opts.userId ?? null,
       adminId: opts.adminId ?? null,
       requestId: opts.requestId ?? null,
@@ -113,7 +114,7 @@ export class OtpService {
 
     record.attempts += 1;
 
-    if (record.code !== code) {
+    if (record.codeHash !== sha256Hex(code)) {
       await this.otpRecordRepository.save(record);
       throw new BadRequestException('Invalid verification code');
     }
@@ -131,12 +132,14 @@ export class OtpService {
     purpose: OtpPurpose;
     code: string;
   }): Promise<boolean> {
+    const codeHash = sha256Hex(opts.code);
+
     const record = await this.otpRecordRepository.findOne({
       where: {
         adminId: opts.adminId,
         purpose: opts.purpose,
         status: OtpStatus.PENDING,
-        code: opts.code,
+        codeHash,
       },
     });
 
@@ -156,7 +159,7 @@ export class OtpService {
 
     record.attempts += 1;
 
-    if (record.code !== opts.code) {
+    if (record.codeHash !== codeHash) {
       await this.otpRecordRepository.save(record);
       return false;
     }
@@ -208,7 +211,7 @@ export class OtpService {
     }
 
     record.status = OtpStatus.VERIFIED;
-    record.code = code;
+    record.codeHash = sha256Hex(code);
     await this.otpRecordRepository.save(record);
     return { record };
   }

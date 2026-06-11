@@ -16,13 +16,13 @@ export class SettingService {
   async createSMTPSettings(createSMTPDto: CreateSMTPDto) {
     const smtpSettings = [
       { key: 'smtp_host', value: createSMTPDto.smtpHost },
-      { key: 'smtp_port', value: createSMTPDto.smtpPort.toString() },
-      { key: 'smtp_secure', value: createSMTPDto.smtpSecure.toString() },
+      { key: 'smtp_port', value: createSMTPDto.smtpPort },
+      { key: 'smtp_secure', value: createSMTPDto.smtpSecure },
       { key: 'smtp_username', value: createSMTPDto.smtpUsername || '' },
       { key: 'smtp_password', value: createSMTPDto.smtpPassword || '' },
       { key: 'smtp_from_email', value: createSMTPDto.smtpFromEmail },
       { key: 'smtp_from_name', value: createSMTPDto.smtpFromName },
-      { key: 'smtp_enabled', value: createSMTPDto.smtpEnabled.toString() },
+      { key: 'smtp_enabled', value: createSMTPDto.smtpEnabled },
     ];
 
     for (const setting of smtpSettings) {
@@ -63,14 +63,20 @@ export class SettingService {
     }
 
     const smtpData = {
-      smtpHost: this.getSettingValue(settings, 'smtp_host'),
-      smtpPort: parseInt(this.getSettingValue(settings, 'smtp_port') || '587'),
-      smtpSecure: this.getSettingValue(settings, 'smtp_secure') === 'true',
-      smtpUsername: this.getSettingValue(settings, 'smtp_username'),
-      smtpPassword: this.getSettingValue(settings, 'smtp_password'),
-      smtpFromEmail: this.getSettingValue(settings, 'smtp_from_email'),
-      smtpFromName: this.getSettingValue(settings, 'smtp_from_name'),
-      smtpEnabled: this.getSettingValue(settings, 'smtp_enabled') === 'true',
+      smtpHost: this.getSettingValue<string>(settings, 'smtp_host') ?? '',
+      smtpPort: this.getSettingValue<number>(settings, 'smtp_port') ?? 587,
+      smtpSecure:
+        this.getSettingValue<boolean>(settings, 'smtp_secure') ?? false,
+      smtpUsername:
+        this.getSettingValue<string>(settings, 'smtp_username') ?? '',
+      smtpPassword:
+        this.getSettingValue<string>(settings, 'smtp_password') ?? '',
+      smtpFromEmail:
+        this.getSettingValue<string>(settings, 'smtp_from_email') ?? '',
+      smtpFromName:
+        this.getSettingValue<string>(settings, 'smtp_from_name') ?? '',
+      smtpEnabled:
+        this.getSettingValue<boolean>(settings, 'smtp_enabled') ?? false,
       createdAt: settings[0]?.createdAt,
       updatedAt: settings[0]?.updatedAt,
     };
@@ -78,8 +84,10 @@ export class SettingService {
     return plainToClass(SMTPResponseDto, smtpData);
   }
 
-  private getSettingValue(settings: Setting[], key: string): string {
-    const setting = settings.find((s) => s.key === key);
-    return setting?.value || '';
+  private getSettingValue<T = unknown>(
+    settings: Setting[],
+    key: string,
+  ): T | undefined {
+    return settings.find((s) => s.key === key)?.value as T | undefined;
   }
 }
