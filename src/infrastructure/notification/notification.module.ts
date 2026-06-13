@@ -16,7 +16,12 @@ import {
       { name: SMS_NOTIFICATION_QUEUE },
     ),
   ],
-  providers: [NotificationService, EmailProcessor, SmsProcessor, TwoFactorCodeListener],
+  providers: [
+    NotificationService,
+    EmailProcessor,
+    SmsProcessor,
+    TwoFactorCodeListener,
+  ],
   exports: [NotificationService],
 })
 export class NotificationModule {}

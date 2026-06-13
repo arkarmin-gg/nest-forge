@@ -10,7 +10,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { redisStore } from 'cache-manager-redis-store';
 import { HealthModule } from 'src/infrastructure/health/health.module';
 import { NotificationModule } from 'src/infrastructure/notification/notification.module';
-import { RoleApiModule } from 'src/api/v1/role/role-api.module';
+import { RoleApiModule } from 'src/api/v1/admin/role/role-api.module';
+import { AppApiModule } from 'src/api/v1/app/app-api.module';
 import { AdminModule } from 'src/modules/admin/admin.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
@@ -78,6 +79,7 @@ import dataSource from './data-source';
     UserModule,
     AdminModule,
     RoleApiModule,
+    AppApiModule,
     SettingModule,
     HealthModule,
   ],

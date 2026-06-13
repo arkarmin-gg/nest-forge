@@ -13,6 +13,7 @@ import { OtpModule } from 'src/modules/otp/otp.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ResourceOwnershipGuard } from './guards/resource-ownership.guard';
+import { SubjectGuard } from './guards/subject.guard';
 import { AuthController } from 'src/api/v1/auth/auth.controller';
 import { UserModule } from 'src/modules/user/user.module';
 import { AdminModule } from 'src/modules/admin/admin.module';
@@ -45,6 +46,7 @@ import { AdminModule } from 'src/modules/admin/admin.module';
     JwtStrategy,
     JwtAuthGuard,
     ResourceOwnershipGuard,
+    SubjectGuard,
   ],
   controllers: [AuthController],
   exports: [
@@ -55,6 +57,7 @@ import { AdminModule } from 'src/modules/admin/admin.module';
     TwoFactorService,
     JwtAuthGuard,
     ResourceOwnershipGuard,
+    SubjectGuard,
   ],
 })
 export class AuthModule {}

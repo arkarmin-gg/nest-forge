@@ -98,7 +98,9 @@ export class ActivityLogService {
   @Cron('0 2 * * *')
   async purgeOldLogs(): Promise<void> {
     await this.deleteOldLogs();
-    this.logger.log(`Activity logs older than ${LOG_RETENTION_DAYS} days purged`);
+    this.logger.log(
+      `Activity logs older than ${LOG_RETENTION_DAYS} days purged`,
+    );
   }
 
   async deleteOldLogs(daysToKeep: number = LOG_RETENTION_DAYS): Promise<void> {

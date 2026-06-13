@@ -12,7 +12,7 @@ import {
   RequirePermissions,
 } from 'src/modules/role/api';
 
-@Controller({ path: '', version: '1' })
+@Controller({ path: 'admin', version: '1' })
 @UseGuards(PermissionsGuard)
 export class ActivityLogController {
   constructor(

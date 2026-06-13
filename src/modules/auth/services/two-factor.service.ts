@@ -22,11 +22,7 @@ import {
   TWO_FACTOR_CODE_REQUESTED,
   TwoFactorCodeRequestedEvent,
 } from '../events/two-factor-code-requested.event';
-import {
-  AUDIT_LOG_EVENT,
-  AuditLogEvent,
-  LogStatus,
-} from 'src/modules/log';
+import { AUDIT_LOG_EVENT, AuditLogEvent, LogStatus } from 'src/modules/log';
 import { LogAction } from 'src/modules/log/api';
 
 @Injectable()

@@ -98,18 +98,16 @@
 nest-forge/
 ├── src/
 │   ├── api/v1/                      ← HTTP Layer (Controllers ONLY)
-│   │   ├── auth/
-│   │   │   ├── auth.controller.ts
-│   │   │   ├── role.controller.ts
-│   │   │   └── permissions.controller.ts
-│   │   ├── admin/
-│   │   │   └── admin.controller.ts
-│   │   ├── user/
-│   │   │   └── user.controller.ts
-│   │   ├── log/
-│   │   │   └── activity-log.controller.ts
-│   │   └── setting/
-│   │       └── setting.controller.ts
+│   │   ├── admin/                   # ADMIN subject surface → /api/v1/admin/*
+│   │   │   ├── admin/admin.controller.ts
+│   │   │   ├── user/user.controller.ts
+│   │   │   ├── role/                (role + permissions controllers)
+│   │   │   ├── log/log.controller.ts
+│   │   │   └── setting/setting.controller.ts
+│   │   ├── app/                     # USER subject surface → /api/v1/app/*
+│   │   │   └── user/user-app.controller.ts
+│   │   └── auth/                    # shared (mostly @Public) login/register
+│   │       └── auth.controller.ts
 │   │
 │   ├── modules/                     ← Domain Layer (Business Logic)
 │   │   ├── auth/                    # Auth, RBAC, JWT, guards, strategies
@@ -207,6 +205,25 @@ async create(@Body() dto: CreateAdminDto) {
   return this.adminRepository.save({ ...dto, password: hashed });
 }
 ```
+
+#### API Audience Zones — `admin/` vs `app/`
+
+The `api/v1/` layer is partitioned by **audience** (the Subject type that consumes it — see ADR-0006):
+
+```
+src/api/v1/
+├── admin/   ← ADMIN subject surface — routes /api/v1/admin/*  (back-office)
+├── app/     ← USER subject surface  — routes /api/v1/app/*    (mobile/web end-user)
+└── auth/    ← shared, mostly @Public — login/register for both subjects
+```
+
+**Rules for placing a new controller:**
+
+- A back-office endpoint goes under `api/v1/admin/<resource>/`, route prefix `admin/...`, gated by `PermissionsGuard` + `@RequirePermissions`. It may return raw entities (passive serialization).
+- An end-user endpoint goes under `api/v1/app/<resource>/`, route prefix `app/...`, gated by `SubjectGuard` + `@RequireSubject('USER')`. It **must** map to a whitelist response DTO (see §7) and derive the target from `@CurrentUser()` — never a `:id` path param.
+- Domain services in `modules/` stay audience-agnostic and are reused by both zones; the audience-specific shaping lives in the controller.
+
+Reference example: `src/api/v1/app/user/user-app.controller.ts` (`GET`/`PATCH /api/v1/app/me`).
 
 ### Zone 2: `modules/` — Domain Layer
 
@@ -457,6 +474,24 @@ Incoming HTTP Request
 }
 ```
 
+### App-Zone Responses — Whitelist DTOs (Secure by Default)
+
+The default pipeline is *expose-everything-minus-`@Exclude()`*. That is fine for the trusted **admin** zone, but **app**-zone endpoints (USER subject) must send only the fields the client needs. Map the entity to a dedicated response DTO with whitelist semantics (see ADR-0006):
+
+```typescript
+// src/modules/user/dto/user-app-response.dto.ts
+export class UserAppResponseDto {
+  @Expose() id!: string;
+  @Expose() fullName!: string;
+  // ...only the fields the app needs. Everything else is dropped.
+}
+
+// in the app controller
+return plainToInstance(UserAppResponseDto, user, { excludeExtraneousValues: true });
+```
+
+`excludeExtraneousValues: true` drops any property without `@Expose()`, so a column added to the entity later **never** leaks to the app surface unless explicitly added to the DTO. The resulting DTO instance still flows through `ClassSerializerInterceptor` and `ResponseInterceptor` unchanged.
+
 ### How to Use `ResponseUtil`
 
 The `ResponseInterceptor` wraps return values automatically. But when you need manual control:
@@ -547,6 +582,24 @@ The system has two distinct authenticated subjects. **Always check `subjectType`
 | Login method | Phone + Password / OAuth | Email + Password (+ 2FA) |
 | Has roles | No | Yes |
 | Has permissions | No | Yes |
+
+### Restricting an Endpoint to a Subject Type — `@RequireSubject`
+
+The global `JwtAuthGuard` only proves a token is valid — it does **not** distinguish USER from ADMIN. To restrict an endpoint to one subject type (e.g. the `app/` zone, which is USER-only), use `SubjectGuard` + `@RequireSubject` (symmetric with `PermissionsGuard` + `@RequirePermissions`):
+
+```typescript
+import { RequireSubject, SubjectGuard, CurrentUser, AuthenticatedUser } from '@modules/auth';
+
+@Controller({ path: 'app/me', version: '1' })
+@UseGuards(SubjectGuard)
+@RequireSubject('USER')        // an ADMIN token → 403 Forbidden
+export class UserAppController {
+  @Get()
+  getProfile(@CurrentUser() user: AuthenticatedUser) {
+    return this.userService.findOne(user.id);   // target derived from the token, no :id param
+  }
+}
+```
 
 ### User Registration State Machine
 

@@ -25,7 +25,7 @@ import {
   UpdateRoleDto,
 } from 'src/modules/role/api';
 
-@Controller({ path: 'roles', version: '1' })
+@Controller({ path: 'admin/roles', version: '1' })
 @UseGuards(PermissionsGuard)
 export class RoleController {
   constructor(

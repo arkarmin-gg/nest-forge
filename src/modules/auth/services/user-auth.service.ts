@@ -23,11 +23,7 @@ import {
 } from 'src/modules/log';
 import { LogAction } from 'src/modules/log/api';
 import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
-import {
-  LoginProvider,
-  User,
-  UserRegistrationStage,
-} from 'src/modules/user';
+import { LoginProvider, User, UserRegistrationStage } from 'src/modules/user';
 import { UserService } from 'src/modules/user/api';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -424,7 +420,10 @@ export class UserAuthService {
     user.fcmToken = dto.fcmToken ?? user.fcmToken;
     await this.userService.saveEntity(user);
 
-    await this.fileUploadService.replace(newProfileImageUrl, existingProfileImageUrl);
+    await this.fileUploadService.replace(
+      newProfileImageUrl,
+      existingProfileImageUrl,
+    );
 
     this.eventEmitter.emit(
       ACTIVITY_LOG_EVENT,
@@ -488,7 +487,10 @@ export class UserAuthService {
 
     const savedUser = await this.userService.saveEntity(updatedUser);
 
-    await this.fileUploadService.replace(newProfileImageUrl, user.profileImageUrl || '');
+    await this.fileUploadService.replace(
+      newProfileImageUrl,
+      user.profileImageUrl || '',
+    );
 
     this.logger.log(`User with ID '${user.id}' profile updated successfully`);
     return savedUser;

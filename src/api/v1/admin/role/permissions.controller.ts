@@ -6,7 +6,7 @@ import {
   RoleService,
 } from 'src/modules/role/api';
 
-@Controller({ path: 'permissions', version: '1' })
+@Controller({ path: 'admin/permissions', version: '1' })
 @UseGuards(PermissionsGuard)
 export class PermissionsController {
   constructor(private readonly roleService: RoleService) {}

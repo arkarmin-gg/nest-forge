@@ -15,7 +15,7 @@ import {
 } from 'src/modules/role/api';
 import { CreateSMTPDto, SettingService } from 'src/modules/setting/api';
 
-@Controller({ path: 'settings', version: '1' })
+@Controller({ path: 'admin/settings', version: '1' })
 export class SettingController {
   constructor(private readonly settingService: SettingService) {}
 
