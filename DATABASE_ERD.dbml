@@ -8,6 +8,13 @@
 //
 // NOTE: DBML cannot express CHECK constraints. Two are required and must
 // be added in a migration (see "Constraints to add in migration" below).
+//
+// NOTE: Uniqueness on soft-deletable tables is enforced by PARTIAL unique
+// indexes (WHERE "deletedAt" IS NULL) so a deleted row's value can be reused
+// by a new active row (see ADR-0007). DBML cannot express the WHERE clause,
+// so these appear below as unique indexes with a "partial" note rather than
+// column-level [unique]. Only refresh_tokens.tokenHash (AuditEntity, no soft
+// delete) is an unconditional unique constraint.
 // =====================================================================
 
 // ---------------------------------------------------------------------
@@ -75,7 +82,7 @@ Table admins {
   id uuid [pk]
   fullName varchar [not null]
   password varchar [null, note: 'hashed; excluded from serialization']
-  email varchar [unique, not null]
+  email varchar [not null, note: 'unique among active rows — see partial index']
   profileImageUrl varchar [null]
   roleId uuid [not null]
   isBanned boolean [not null, default: false]
@@ -91,12 +98,13 @@ Table admins {
     isBanned
     roleId
     deletedAt
+    email [unique, name: 'UQ_admins_email_active', note: 'partial: WHERE "deletedAt" IS NULL']
   }
 }
 
 Table roles {
   id uuid [pk]
-  name varchar [unique, not null]   // was non-unique
+  name varchar [not null, note: 'unique among active rows — see partial index']
   description varchar [null]
   rank int [not null, default: 99, note: 'lower rank = higher privilege (1 = superadmin)']
   createdAt timestamptz [not null]
@@ -105,13 +113,14 @@ Table roles {
 
   Indexes {
     deletedAt
+    name [unique, name: 'UQ_roles_name_active', note: 'partial: WHERE "deletedAt" IS NULL']
   }
 }
 
 Table modules {
   id uuid [pk]
   name varchar [not null]
-  code varchar [unique, not null]
+  code varchar [not null, note: 'unique among active rows — see partial index']
   parentId uuid [null, note: 'self-referencing tree']
   createdAt timestamptz [not null]
   updatedAt timestamptz [not null]
@@ -120,6 +129,7 @@ Table modules {
   Indexes {
     parentId
     deletedAt
+    code [unique, name: 'UQ_modules_code_active', note: 'partial: WHERE "deletedAt" IS NULL']
   }
 }
 
@@ -133,7 +143,7 @@ Table permissions {
 
   Indexes {
     moduleId                    // FK index (was missing)
-    (moduleId, action) [unique]
+    (moduleId, action) [unique, name: 'UQ_permissions_module_action_active', note: 'partial: WHERE "deletedAt" IS NULL']
     deletedAt
   }
 }
@@ -156,7 +166,7 @@ Table users {
   id uuid [pk]
   email varchar [null]
   fullName varchar [null]
-  phone varchar [unique, not null]   // SMS auth identity
+  phone varchar [not null, note: 'SMS auth identity — unique among active rows']
   password varchar [null, note: 'hashed; excluded from serialization']
   isBanned boolean [not null, default: false]
   profileImageUrl varchar [null]
@@ -167,8 +177,8 @@ Table users {
   fcmToken varchar [null]
   lastLoginAt timestamptz [null]
   lastLogoutAt timestamptz [null]
-  googleId varchar [unique, null]
-  appleId varchar [unique, null]
+  googleId varchar [null, note: 'unique among active rows — see partial index']
+  appleId varchar [null, note: 'unique among active rows — see partial index']
   loginProvider login_provider [null]
   createdAt timestamptz [not null]
   updatedAt timestamptz [not null]
@@ -179,6 +189,9 @@ Table users {
     fullName
     isBanned
     deletedAt
+    phone [unique, name: 'UQ_users_phone_active', note: 'partial: WHERE "deletedAt" IS NULL']
+    googleId [unique, name: 'UQ_users_googleId_active', note: 'partial: WHERE "deletedAt" IS NULL']
+    appleId [unique, name: 'UQ_users_appleId_active', note: 'partial: WHERE "deletedAt" IS NULL']
   }
 }
 
@@ -286,7 +299,7 @@ Table audit_logs {
 
 Table settings {
   id uuid [pk]
-  key varchar [unique, not null]
+  key varchar [not null, note: 'unique among active rows — see partial index']
   value jsonb [not null, default: '{}']  // was nullable varchar
   description text [null]
   createdAt timestamptz [not null]
@@ -295,6 +308,7 @@ Table settings {
 
   Indexes {
     deletedAt
+    key [unique, name: 'UQ_settings_key_active', note: 'partial: WHERE "deletedAt" IS NULL']
   }
 }
 
@@ -334,3 +348,15 @@ Ref: audit_logs.adminId > admins.id [delete: set null]
 //
 //  -- Optional: enforce password presence for local-auth users/admins
 //  -- in application logic or a CHECK keyed off loginProvider.
+//
+//  -- Partial unique indexes (ADR-0007) — uniqueness scoped to active rows.
+//  -- DBML emits these as plain UNIQUE; the real DDL carries WHERE clauses:
+//  CREATE UNIQUE INDEX "UQ_users_phone_active"    ON users ("phone")    WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_users_googleId_active" ON users ("googleId") WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_users_appleId_active"  ON users ("appleId")  WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_admins_email_active"   ON admins ("email")   WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_roles_name_active"     ON roles ("name")     WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_modules_code_active"   ON modules ("code")   WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_settings_key_active"   ON settings ("key")   WHERE "deletedAt" IS NULL;
+//  CREATE UNIQUE INDEX "UQ_permissions_module_action_active"
+//    ON permissions ("moduleId", "action") WHERE "deletedAt" IS NULL;
