@@ -9,11 +9,9 @@ export {
 export { RequireRoles, ROLES_KEY } from './decorators/roles.decorator';
 
 // Entities
-export {
-  ActionType,
-  Permission,
-  PermissionModule,
-} from './entities/permission.entity';
+// Note: PermissionModule is NOT re-exported here — it is the argument enum for
+// @RequirePermissions, so its canonical home is api.ts (no-overlap rule).
+export { ActionType, Permission } from './entities/permission.entity';
 export { ModuleEntity } from './entities/module.entity';
 export { RolePermission } from './entities/role-permission.entity';
 export { Role } from './entities/role.entity';

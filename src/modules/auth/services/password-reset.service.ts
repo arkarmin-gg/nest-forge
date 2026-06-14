@@ -18,7 +18,8 @@ import {
 import { buildRequestContext } from 'src/common/utils/request-context.util';
 import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
 import { Admin } from 'src/modules/admin';
-import { OtpPurpose, OtpService } from 'src/modules/otp';
+import { OtpPurpose } from 'src/modules/otp';
+import { OtpService } from 'src/modules/otp/api';
 import { User } from 'src/modules/user';
 import { Repository } from 'typeorm';
 import { ForgotPasswordSendOTPDto } from '../dto/forgot-password-send-otp.dto';

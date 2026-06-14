@@ -365,7 +365,7 @@ Incoming HTTP Request
         │
         ▼
 ┌──────────────────────┐
-│  RolesGuard /        │  Checks @Roles() and @RequirePermissions()
+│  RolesGuard /        │  Checks @RequireRoles() / @RequirePermissions()
 │  PermissionsGuard    │
 └──────────────────────┘
         │
@@ -421,6 +421,12 @@ Incoming HTTP Request
         ▼
      HTTP Response
 ```
+
+> **Where each piece is actually registered** (the diagram shows logical order, not one file):
+> - `RequestIdMiddleware` — `app.module.ts` via `configure(consumer)`.
+> - Global guards — **only** `JwtAuthGuard` and `ThrottlerGuard`, as `APP_GUARD` providers in [app.module.ts](src/app.module.ts). `RolesGuard`/`PermissionsGuard`/`ResourceOwnershipGuard`/`SubjectGuard` are **not** global — they run only where a handler/controller adds `@UseGuards(...)`.
+> - `TrimPipe` then `ValidationPipe` — `app.useGlobalPipes(...)` in [main.ts](src/main.ts).
+> - Interceptors are spread across files: `ClassSerializerInterceptor` + `TimeoutInterceptor` in `main.ts`; `ActivityLogInterceptor` as `APP_INTERCEPTOR` in `app.module.ts`; `PresignedUrlInterceptor` + `ResponseInterceptor` as `APP_INTERCEPTOR` in [common.module.ts](src/common/common.module.ts). NestJS runs interceptors' pre-controller logic in registration order and their post-controller (response) logic in reverse, so on the way out `ResponseInterceptor` wraps first, then presigned-URL resolution, etc.
 
 ---
 
@@ -497,7 +503,7 @@ return plainToInstance(UserAppResponseDto, user, { excludeExtraneousValues: true
 The `ResponseInterceptor` wraps return values automatically. But when you need manual control:
 
 ```typescript
-import { ResponseUtil } from '@common/utils/response.util';
+import { ResponseUtil } from 'src/common/utils/response.util';
 
 // In a service or when bypassing the interceptor
 return ResponseUtil.success(data, 'Created successfully');
@@ -530,19 +536,18 @@ Client sends: Authorization: Bearer <accessToken>
 ### Getting the Current User in a Controller
 
 ```typescript
-import { CurrentUser } from '@modules/auth';
-import { AuthenticatedUser } from '@modules/auth';
+import { CurrentUser, AuthenticatedUser } from 'src/modules/auth/api';
 
 @Get('profile')
 getProfile(@CurrentUser() user: AuthenticatedUser) {
-  return this.userService.findById(user.sub);
+  return this.userService.findById(user.id);
 }
 ```
 
 ### Making an Endpoint Public
 
 ```typescript
-import { Public } from '@modules/auth';
+import { Public } from 'src/modules/auth/api';
 
 @Get('status')
 @Public()
@@ -553,23 +558,30 @@ getStatus() {
 
 ### Role-Based Access Control
 
-```typescript
-import { Roles, RequirePermissions } from '@modules/auth';
-import { PermissionModule } from '@modules/auth';
+Authorization decorators live in the **role** module. `RequireRoles` + `RolesGuard` are exposed on `src/modules/role`; `RequirePermissions` + `PermissionsGuard` + `PermissionModule` on `src/modules/role/api`. Neither guard is global — apply it with `@UseGuards(...)` (commonly at the controller class level), then annotate the handler.
 
-// Only admins with role 'superadmin' or 'editor'
-@Roles('superadmin', 'editor')
+```typescript
+import { UseGuards } from '@nestjs/common';
+import { RequireRoles, RolesGuard } from 'src/modules/role';
+import { RequirePermissions, PermissionsGuard, PermissionModule } from 'src/modules/role/api';
+
+// Coarse: only admins whose role is 'superadmin' or 'editor'
+@UseGuards(RolesGuard)
+@RequireRoles('superadmin', 'editor')
 @Get()
 findAll() { ... }
 
-// Fine-grained permission check
+// Fine-grained: a specific permission on a module
+@UseGuards(PermissionsGuard)
 @RequirePermissions({
   module: PermissionModule.ADMIN,
-  permission: 'create'
+  permission: 'create',
 })
 @Post()
 create(@Body() dto: CreateAdminDto) { ... }
 ```
+
+> Only `JwtAuthGuard` and `ThrottlerGuard` are registered globally (see [app.module.ts](src/app.module.ts)). `RolesGuard`, `PermissionsGuard`, `ResourceOwnershipGuard`, and `SubjectGuard` are opt-in per controller/handler via `@UseGuards()`.
 
 ### Dual Authentication — User vs Admin
 
@@ -588,7 +600,7 @@ The system has two distinct authenticated subjects. **Always check `subjectType`
 The global `JwtAuthGuard` only proves a token is valid — it does **not** distinguish USER from ADMIN. To restrict an endpoint to one subject type (e.g. the `app/` zone, which is USER-only), use `SubjectGuard` + `@RequireSubject` (symmetric with `PermissionsGuard` + `@RequirePermissions`):
 
 ```typescript
-import { RequireSubject, SubjectGuard, CurrentUser, AuthenticatedUser } from '@modules/auth';
+import { RequireSubject, SubjectGuard, CurrentUser, AuthenticatedUser } from 'src/modules/auth/api';
 
 @Controller({ path: 'app/me', version: '1' })
 @UseGuards(SubjectGuard)
@@ -624,30 +636,32 @@ POST /auth/register/profile      → registrationStage = COMPLETED ✓
 
 ### Base Entity — Extend This Always
 
-Every entity **must** extend `BaseEntity`:
+Every entity **must** extend `BaseEntity`. It is an **abstract** class (no `@Entity()` decorator — that belongs on the concrete entity), uses `timestamptz` columns, and indexes `deletedAt` so soft-delete filtering stays fast:
 
 ```typescript
 // src/common/entities/base.entity.ts
-@Entity()
-export class BaseEntity {
+export abstract class BaseEntity {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ type: 'timestamptz' })
+  createdAt!: Date;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt!: Date;
 
-  @DeleteDateColumn()
-  deletedAt: Date | null;   // Soft delete — never physically delete rows
+  @Index()
+  @DeleteDateColumn({ type: 'timestamptz' })
+  deletedAt?: Date;   // Soft delete — never physically delete rows
 }
 ```
+
+For append-only tables that must **not** be soft-deletable (the log tables), extend `AuditEntity` instead (`src/common/entities/audit.entity.ts`) — same `id`/`createdAt`/`updatedAt`, but no `deletedAt`.
 
 ### Creating an Entity
 
 ```typescript
-import { BaseEntity } from '@common/entities/base.entity';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('products')
 export class Product extends BaseEntity {
@@ -686,6 +700,24 @@ import { Exclude } from 'class-transformer';
 @Exclude()
 password: string;
 ```
+
+### Unique Columns on Soft-Deletable Entities — Use Partial Unique Indexes
+
+Because soft delete leaves the row in place, a plain `@Column({ unique: true })` would keep a deleted record's value reserved forever — re-using it (e.g. re-registering a deleted user's phone) fails with `duplicate key value violates unique constraint`. Scope uniqueness to **active** rows with a partial unique index instead of an unconditional unique constraint (see ADR-0007):
+
+```typescript
+@Entity('users')
+@Index('UQ_users_phone_active', ['phone'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
+export class User extends BaseEntity {
+  @Column()   // NOT @Column({ unique: true })
+  phone!: string;
+}
+```
+
+This lets deleted rows hold stale values while active rows stay unique. The existence pre-checks in services already ignore soft-deleted rows (TypeORM's default), so a reused value creates a fresh record.
 
 ### Migrations — Never Use `synchronize: true`
 
@@ -926,44 +958,51 @@ async findOne(@Param('id') id: string) {
 
 ## 13. Async Notifications (BullMQ)
 
-Emails and SMS are **never sent synchronously** during a request. They are queued and processed by workers.
+Emails and SMS are **never sent synchronously** during a request. They are queued (`EMAIL_NOTIFICATION_QUEUE`, `SMS_NOTIFICATION_QUEUE`) and processed by workers.
 
-### Sending a Notification
+`NotificationService` exposes **purpose-specific** methods, not a generic `sendEmail`. The current methods are:
+
+| Method | Channel | Behaviour |
+|--------|---------|-----------|
+| `sendTwoFactorCode(payload)` | Email | Fire-and-forget (queued, returns `void`) |
+| `sendForgotPasswordResetCode(payload)` | Email | Fire-and-forget (queued, returns `void`) |
+| `sendSmsOtp(payload)` | SMS | Awaits the worker result → `{ success, requestId }` |
+| `verifySmsOtp(payload)` | SMS | Awaits the worker result → `{ success, verifiedAt, to }` |
 
 ```typescript
 @Injectable()
-export class ProductService {
+export class TwoFactorService {
   constructor(private readonly notificationService: NotificationService) {}
 
-  async create(dto: CreateProductDto) {
-    const product = await this.productRepository.save(dto);
-
-    // Fire-and-forget: email queued asynchronously
-    await this.notificationService.sendEmail({
-      to: dto.ownerEmail,
-      subject: 'Product Created',
-      body: `Your product "${product.name}" has been created.`,
+  async challenge(admin: Admin, code: string) {
+    // Fire-and-forget: queued asynchronously, request is not blocked on delivery
+    await this.notificationService.sendTwoFactorCode({
+      email: admin.email,
+      name: admin.fullName,
+      code,
     });
-
-    return product;
   }
 }
 ```
 
+When adding a new email type, add a method here plus a job handler in `EmailProcessor` — do not call Nodemailer from a request handler.
+
 ### How It Works
 
 ```
-Service calls notificationService.sendEmail()
+Service calls notificationService.sendTwoFactorCode()
         │
         ▼
 Job added to EMAIL_NOTIFICATION_QUEUE (Redis/BullMQ)
         │
         ▼ (async, non-blocking)
-EmailProcessor picks up job
+EmailProcessor picks up the job (by job name)
         │
         ▼
 Nodemailer sends the email
 ```
+
+SMS works the same way via `SMS_NOTIFICATION_QUEUE` and `SmsProcessor`, except `sendSmsOtp`/`verifySmsOtp` await the job result because the caller needs the provider `requestId`/verification outcome.
 
 ---
 
@@ -1003,7 +1042,7 @@ export class UpdateProductDto extends PartialType(CreateProductDto) {}
 ### Pagination DTO — Always Extend This
 
 ```typescript
-import { PaginationFilterDto } from '@common/dto/pagination-filter.dto';
+import { PaginationFilterDto } from 'src/common/dto/pagination-filter.dto';
 
 export class FilterProductDto extends PaginationFilterDto {
   @IsOptional()
@@ -1016,7 +1055,7 @@ export class FilterProductDto extends PaginationFilterDto {
 }
 ```
 
-`PaginationFilterDto` provides: `page`, `limit`, `sortBy`, `sortOrder` — do not redefine these.
+`PaginationFilterDto` provides: `page` (default 1), `limit` (default 10), and `getAll` (default false — return all rows, bypassing pagination). Do not redefine these. Add resource-specific filters like `search` in the subclass.
 
 ### Global String Trimming
 
@@ -1055,13 +1094,19 @@ No action needed — this is automatic.
 
 ## 15. Transaction Management
 
-Use `@Transactional()` for operations that must succeed or fail together:
+Use `@Transactional()` for operations that must succeed or fail together. The decorated class **must** expose a `dataSource` property (inject it with `@InjectDataSource()`) — the decorator reads `this.dataSource` and throws at call time if it's missing. Propagation is REQUIRED: a nested `@Transactional()` call reuses the active transaction rather than opening a new one.
 
 ```typescript
-import { Transactional } from '@common/transaction/transactional.decorator';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { Transactional } from 'src/common/transaction/transactional.decorator';
 
 @Injectable()
 export class OrderService {
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+  ) {}
+
   @Transactional()
   async placeOrder(dto: PlaceOrderDto): Promise<Order> {
     // All queries in this method run in a single DB transaction
@@ -1087,11 +1132,12 @@ export class OrderService {
 
 | Decorator | Import From | Effect |
 |-----------|-------------|--------|
-| `@Public()` | `@modules/auth` | Bypasses JWT authentication |
-| `@CurrentUser()` | `@modules/auth` | Injects current authenticated user |
-| `@Roles('admin', 'editor')` | `@modules/auth` | Restricts by role name |
-| `@RequirePermissions({...})` | `@modules/auth` | Restricts by specific permission |
-| `@CheckOwnership()` | `@modules/auth` | Verifies resource belongs to caller |
+| `@Public()` | `src/modules/auth/api` | Bypasses JWT authentication |
+| `@CurrentUser()` | `src/modules/auth/api` | Injects current authenticated user |
+| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`) |
+| `@CheckOwnership()` | `src/modules/auth` | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
+| `@RequireRoles('admin', 'editor')` | `src/modules/role` | Restricts by role name (needs `@UseGuards(RolesGuard)`) |
+| `@RequirePermissions({...})` | `src/modules/role/api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`) |
 
 ### Logging Decorators
 
@@ -1103,59 +1149,70 @@ export class OrderService {
 
 | Decorator | Import From | Effect |
 |-----------|-------------|--------|
-| `@RequestTimeout(ms)` | `@common/decorators` | Overrides 10s global request timeout |
-| `@ResolvePresignedUrls(...fields)` | `@common/decorators` | Auto-converts S3 keys to URLs in response |
+| `@RequestTimeout(ms)` | `src/common/decorators/request-timeout.decorator` | Overrides 10s global request timeout |
+| `@ResolvePresignedUrls(...fields)` | `src/common/decorators/presigned-urls.decorator` | Auto-converts S3 keys to URLs in response |
 
 ---
 
 ## 17. Environment Variables
 
-Copy `.env.example` to `.env` and fill in all values.
-
-### Required Variables
+Copy `.env.example` to `.env` and fill in all values. The Joi schema in [env.validation.ts](src/common/config/env.validation.ts) is the source of truth — it runs with `allowUnknown: true`, so vars not listed there (e.g. `REDIS_PREFIX_KEY`) are read directly via `ConfigService` and are not validated. Variables marked **required** below abort startup if missing.
 
 ```bash
 # App
-NODE_ENV=development
-PORT=3000
-APP_NAME=nest-forge
-TZ=UTC
+NODE_ENV=development             # development | production | test (default: development)
+PORT=3000                        # default 3000
+APP_NAME=nest-forge              # default "NestJS TypeORM API Starter"
+# Note: TZ is forced to 'UTC' in src/main.ts — it is NOT read from the environment.
 
-# Database
+# Database (DB_HOST, DB_USERNAME, DB_PASSWORD, DB_NAME are REQUIRED)
 DB_HOST=localhost
-DB_PORT=5432
+DB_PORT=5432                     # default 5432
 DB_USERNAME=postgres
 DB_PASSWORD=secret
 DB_NAME=nest_forge
 
-# JWT (use strong random secrets — 32+ chars)
+# Auth
+AUTH_PASSWORD_SALT_ROUNDS=10     # bcrypt cost factor (default 10)
+
+# JWT (JWT_SECRET, JWT_REFRESH_SECRET REQUIRED — must be 32+ chars)
 JWT_SECRET=your-very-long-secret-here
 JWT_REFRESH_SECRET=another-very-long-secret-here
-JWT_EXPIRATION=900000            # 15 minutes in milliseconds
-JWT_REFRESH_EXPIRATION=2592000000  # 30 days in milliseconds
+JWT_EXPIRATION=900000            # 15 minutes in ms (default)
+JWT_REFRESH_EXPIRATION=2592000000  # 30 days in ms (default)
 
 # Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PREFIX_KEY=nest_forge:
+REDIS_HOST=localhost             # default localhost
+REDIS_PORT=6379                  # default 6379
+REDIS_PREFIX_KEY=nest_forge:     # BullMQ/cache key prefix (read directly, not validated)
 
-# CORS (comma-separated origins, or '*' for development)
+# CORS (comma-separated origins, or '*'/'all'/'true' for all — dev only)
 CORS_ORIGINS=http://localhost:3000
 
-# AWS S3
+# Email (SMTP_FROM_NAME is REQUIRED)
+SMTP_FROM_NAME=nest-forge
+
+# AWS S3 (all optional — only needed when file uploads are used)
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=ap-southeast-1
 AWS_BUCKET_NAME=my-project-bucket
+AWS_ENDPOINT=                    # optional custom endpoint (e.g. S3-compatible storage)
 
-# OTP (set to true in development to skip real SMS)
-OTP_MOCK_ENABLED=true
-OTP_MOCK_CODE=000000
-SMS_MOCK_ENABLED=true
-
-# OAuth
+# OAuth (optional)
 GOOGLE_CLIENT_ID=...
 APPLE_CLIENT_ID=...
+
+# OTP / SMS
+OTP_MOCK_ENABLED=true            # skip real SMS in dev
+OTP_MOCK_CODE=000000             # 6-digit mock code (default 000000)
+SMS_MOCK_ENABLED=false           # default false
+# SMS provider (Poh) — all optional, required only when sending real SMS:
+SMS_POH_API_KEY=...
+SMS_POH_API_SECRET_KEY=...
+SMS_POH_BASE_API_URL=...
+SMS_POH_API_BRAND=...
+SMS_POH_API_SENDER_ID=...
 ```
 
 ---
@@ -1349,7 +1406,7 @@ touch src/modules/product/api.ts
 ```typescript
 // src/modules/product/entities/product.entity.ts
 import { Entity, Column } from 'typeorm';
-import { BaseEntity } from '@common/entities/base.entity';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('products')
 export class Product extends BaseEntity {
@@ -1412,7 +1469,9 @@ export class ProductService {
   }
 
   async findAll(): Promise<Product[]> {
-    return this.productRepository.find({ where: { deletedAt: null } });
+    // No deletedAt clause needed — @DeleteDateColumn makes TypeORM exclude
+    // soft-deleted rows automatically. Use { withDeleted: true } to include them.
+    return this.productRepository.find();
   }
 
   async findById(id: string): Promise<Product> {
@@ -1477,13 +1536,13 @@ export { FilterProductDto } from './dto/filter-product.dto';
 ### Step 7 — Create the Controller
 
 ```typescript
-// src/api/v1/product/product.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+// src/api/v1/admin/product/product.controller.ts
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ProductService, CreateProductDto, UpdateProductDto } from 'src/modules/product/api';
-import { CurrentUser, Roles } from 'src/modules/auth/api';
-import type { AuthenticatedUser } from 'src/modules/auth/api';
+import { RequireRoles, RolesGuard } from 'src/modules/role';
 
-@Controller('api/v1/products')
+@Controller({ path: 'admin/products', version: '1' })   // → /api/v1/admin/products
+@UseGuards(RolesGuard)                                    // guard applied once at class level
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
@@ -1498,30 +1557,32 @@ export class ProductController {
   }
 
   @Post()
-  @Roles('superadmin', 'editor')
+  @RequireRoles('superadmin', 'editor')
   create(@Body() dto: CreateProductDto) {
     return this.productService.create(dto);
   }
 
   @Put(':id')
-  @Roles('superadmin', 'editor')
+  @RequireRoles('superadmin', 'editor')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('superadmin')
+  @RequireRoles('superadmin')
   remove(@Param('id') id: string) {
     return this.productService.remove(id);
   }
 }
 ```
 
+Place admin-facing controllers under `src/api/v1/admin/<resource>/` and end-user ones under `src/api/v1/app/<resource>/` (see §4). The global prefix `api` and URI versioning produce the final `/api/v1/...` path from the `version` in `@Controller`.
+
 ### Step 8 — Register in AppModule
 
 ```typescript
 // src/app.module.ts
-import { ProductModule } from '@modules/product';
+import { ProductModule } from 'src/modules/product';
 
 @Module({
   imports: [
@@ -1532,7 +1593,12 @@ import { ProductModule } from '@modules/product';
 export class AppModule {}
 ```
 
-And register the controller in `app.module.ts` or create a separate API module for it.
+**Where does the controller get registered?** Not in `app.module.ts` — its `controllers` array holds only `AppController`. The convention is one of:
+
+- **Register the controller in its domain module** — e.g. `AdminModule`, `UserModule`, and `SettingModule` each declare their controller in their own `@Module({ controllers: [...] })`. Simplest for single-controller resources.
+- **Create a dedicated `*ApiModule`** under `src/api/v1/...` that imports the domain module and declares the controllers — used by `RoleApiModule` (role + permissions controllers) and `AppApiModule` (the `app/` zone). That `*ApiModule` is then imported by `app.module.ts`.
+
+Pick the API-module pattern when a zone has multiple controllers or needs audience-specific wiring; otherwise register the controller in the domain module.
 
 ### Step 9 — Generate and Run the Migration
 
@@ -1568,7 +1634,7 @@ Send email/SMS?         Queue it via NotificationService. Never send inline.
 File upload?            Store S3 key in DB. Use @ResolvePresignedUrls on GET.
 Need a transaction?     Annotate the service method with @Transactional().
 Public endpoint?        Add @Public() decorator.
-Role restriction?       Add @Roles(...) or @RequirePermissions(...).
+Role restriction?       @UseGuards(RolesGuard) + @RequireRoles(...), or @UseGuards(PermissionsGuard) + @RequirePermissions(...).
 Seed / reset DB?        forge db seed | forge db reset.
 Something broken?       Check logs/ directory. All errors are structured there.
 ```

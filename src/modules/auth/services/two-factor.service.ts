@@ -16,7 +16,8 @@ import {
 import { Request } from 'express';
 import { buildRequestContext } from 'src/common/utils/request-context.util';
 import { Admin } from 'src/modules/admin';
-import { OtpPurpose, OtpService, OtpStatus } from 'src/modules/otp';
+import { OtpPurpose, OtpStatus } from 'src/modules/otp';
+import { OtpService } from 'src/modules/otp/api';
 import { Repository } from 'typeorm';
 import {
   TWO_FACTOR_CODE_REQUESTED,
