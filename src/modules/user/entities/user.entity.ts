@@ -30,6 +30,18 @@ export type UserRegistrationStage =
   (typeof UserRegistrationStage)[keyof typeof UserRegistrationStage];
 
 @Entity('users')
+@Index('UQ_users_phone_active', ['phone'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
+@Index('UQ_users_googleId_active', ['googleId'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
+@Index('UQ_users_appleId_active', ['appleId'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class User extends BaseEntity {
   @Index()
   @Column({ nullable: true })
@@ -39,7 +51,7 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   fullName!: string;
 
-  @Column({ unique: true })
+  @Column()
   phone!: string;
 
   @Column({ nullable: true })
@@ -84,10 +96,10 @@ export class User extends BaseEntity {
   @OneToMany(() => OtpRecord, (record) => record.user)
   otpRecords?: OtpRecord[];
 
-  @Column({ type: 'varchar', nullable: true, unique: true })
+  @Column({ type: 'varchar', nullable: true })
   googleId?: string;
 
-  @Column({ type: 'varchar', nullable: true, unique: true })
+  @Column({ type: 'varchar', nullable: true })
   appleId?: string;
 
   @Column({ type: 'varchar', nullable: true })

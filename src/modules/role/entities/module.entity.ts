@@ -6,17 +6,22 @@ import {
   JoinColumn,
   BeforeInsert,
   BeforeUpdate,
+  Index,
 } from 'typeorm';
 import slugify from 'slugify';
 import { Permission } from './permission.entity';
 import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('modules')
+@Index('UQ_modules_code_active', ['code'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class ModuleEntity extends BaseEntity {
   @Column()
   name!: string;
 
-  @Column({ unique: true })
+  @Column()
   code!: string;
 
   @Column({ type: 'uuid', nullable: true })

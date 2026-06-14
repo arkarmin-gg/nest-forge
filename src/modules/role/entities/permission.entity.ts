@@ -35,7 +35,10 @@ export enum PermissionModule {
 }
 
 @Entity('permissions')
-@Index(['moduleId', 'action'], { unique: true })
+@Index('UQ_permissions_module_action_active', ['moduleId', 'action'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class Permission extends BaseEntity {
   @Index()
   @Column('uuid')

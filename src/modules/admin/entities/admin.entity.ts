@@ -15,6 +15,10 @@ import {
 } from 'typeorm';
 
 @Entity('admins')
+@Index('UQ_admins_email_active', ['email'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class Admin extends BaseEntity {
   @Index()
   @Column()
@@ -24,7 +28,7 @@ export class Admin extends BaseEntity {
   @Exclude()
   password!: string;
 
-  @Column({ unique: true })
+  @Column()
   email!: string;
 
   @Column({ nullable: true })

@@ -1,10 +1,14 @@
-import { Entity, Column, OneToMany } from 'typeorm';
+import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { RolePermission } from './role-permission.entity';
 import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('roles')
+@Index('UQ_roles_name_active', ['name'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class Role extends BaseEntity {
-  @Column({ unique: true })
+  @Column()
   name!: string;
 
   @Column({ nullable: true })
