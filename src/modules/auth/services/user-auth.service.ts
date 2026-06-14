@@ -7,8 +7,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { JwtService } from '@nestjs/jwt';
 import * as appleSignin from 'apple-signin-auth';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
@@ -16,13 +16,13 @@ import { OAuth2Client } from 'google-auth-library';
 import { FileUploadService } from 'src/common/services/file-upload.service';
 import { nowUtc } from 'src/common/utils/date-time.util';
 import { buildRequestContext } from 'src/common/utils/request-context.util';
+import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
 import {
   ACTIVITY_LOG_EVENT,
   ActivityLogEvent,
   LogStatus,
 } from 'src/modules/log';
 import { LogAction } from 'src/modules/log/api';
-import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
 import { LoginProvider, User, UserRegistrationStage } from 'src/modules/user';
 import { UserService } from 'src/modules/user/api';
 import { ChangePasswordDto } from '../dto/change-password.dto';
@@ -451,7 +451,7 @@ export class UserAuthService {
   async updateProfile(
     userId: string,
     updateProfileDto: UpdateProfileDto,
-    request: Request,
+    _request: Request,
     file?: Express.Multer.File,
   ) {
     const user = await this.userService.findByIdNullable(userId);
@@ -499,7 +499,7 @@ export class UserAuthService {
   async changePassword(
     userId: string,
     dto: ChangePasswordDto,
-    request: Request,
+    _request: Request,
   ): Promise<void> {
     const user = await this.userService.findByIdNullable(userId);
 
@@ -527,7 +527,7 @@ export class UserAuthService {
     this.logger.log(`User with ID '${user.id}' password changed successfully`);
   }
 
-  async deleteProfile(userId: string, request: Request): Promise<void> {
+  async deleteProfile(userId: string, _request: Request): Promise<void> {
     const user = await this.userService.findByIdWithRefreshTokens(userId);
 
     if (!user) {

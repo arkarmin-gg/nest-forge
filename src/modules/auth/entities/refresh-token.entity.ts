@@ -14,7 +14,7 @@ import {
 @Index(['userId', 'isRevoked'])
 @Index(['adminId', 'isRevoked'])
 export class RefreshToken extends AuditEntity {
-  @Column({ unique: true })
+  @Column({ type: 'text' })
   tokenHash!: string;
 
   @Index()

@@ -11,9 +11,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * (WHERE "deletedAt" IS NULL) lets deleted rows hold stale values while keeping
  * active rows unique. See docs/adr/0007-partial-unique-indexes-for-soft-delete.md.
  */
-export class PartialUniqueSoftDelete1781200000000
-  implements MigrationInterface
-{
+export class PartialUniqueSoftDelete1781200000000 implements MigrationInterface {
   name = 'PartialUniqueSoftDelete1781200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

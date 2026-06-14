@@ -59,7 +59,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
   }
 
-  private getErrorName(status: number): string {
+  private getErrorName(status: HttpStatus): string {
     switch (status) {
       case HttpStatus.BAD_REQUEST:
         return 'Bad Request';

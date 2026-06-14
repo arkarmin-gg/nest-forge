@@ -9,14 +9,16 @@ import { UserAuthService } from '../services/user-auth.service';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private configService: ConfigService,
-    private userAuthService: UserAuthService,
-    private adminAuthService: AdminAuthService,
+    private readonly configService: ConfigService,
+    private readonly userAuthService: UserAuthService,
+    private readonly adminAuthService: AdminAuthService,
   ) {
+    const jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
+
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: (request) => jwtFromRequest(request),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET')!,
+      secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
     });
   }
 
@@ -25,16 +27,32 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       const admin = await this.adminAuthService.validateAdminById(
         payload.adminId,
       );
-      if (!admin) throw new UnauthorizedException('Invalid token');
+
+      if (!admin) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
       const { password: _p, hashPassword: _h, ...rest } = admin;
-      return { ...rest, subjectType: 'ADMIN' };
+
+      return {
+        ...rest,
+        subjectType: 'ADMIN',
+      };
     }
 
     if (payload.subjectType === 'USER' && payload.userId) {
       const user = await this.userAuthService.validateUserById(payload.userId);
-      if (!user) throw new UnauthorizedException('Invalid token');
+
+      if (!user) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
       const { password: _p, hashPassword: _h, ...rest } = user;
-      return { ...rest, subjectType: 'USER' };
+
+      return {
+        ...rest,
+        subjectType: 'USER',
+      };
     }
 
     throw new UnauthorizedException('Invalid token');

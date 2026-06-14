@@ -15,7 +15,6 @@ import {
   getMockOtpCode,
   isOtpMockEnabled,
 } from 'src/common/utils/otp-mock.util';
-import { buildRequestContext } from 'src/common/utils/request-context.util';
 import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
 import { Admin } from 'src/modules/admin';
 import { OtpPurpose } from 'src/modules/otp';
@@ -52,7 +51,7 @@ export class PasswordResetService {
     return crypto.randomInt(100000, 999999).toString();
   }
 
-  async passwordResetOTPSend(dto: ForgotPasswordSendOTPDto, request: Request) {
+  async passwordResetOTPSend(dto: ForgotPasswordSendOTPDto, _request: Request) {
     const { email } = dto;
 
     const admin = await this.adminRepository.findOne({ where: { email } });
@@ -109,7 +108,7 @@ export class PasswordResetService {
     return { userId: dto.userId, accessToken };
   }
 
-  async resetPassword(dto: ResetPasswordDto, request: Request) {
+  async resetPassword(dto: ResetPasswordDto, _request: Request) {
     try {
       await this.jwtService.verifyAsync(dto.accessToken);
     } catch {
@@ -169,7 +168,7 @@ export class PasswordResetService {
 
   async userPasswordResetOTPSend(
     dto: UserForgotPasswordSendOTPDto,
-    request: Request,
+    _request: Request,
   ) {
     const { phone } = dto;
     const user = await this.userRepository.findOne({ where: { phone } });
@@ -226,7 +225,7 @@ export class PasswordResetService {
     return { userId, accessToken };
   }
 
-  async userResetPassword(dto: ResetPasswordDto, request: Request) {
+  async userResetPassword(dto: ResetPasswordDto, _request: Request) {
     try {
       await this.jwtService.verifyAsync(dto.accessToken);
     } catch {
