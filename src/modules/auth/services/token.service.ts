@@ -22,11 +22,11 @@ export class TokenService {
 
   constructor(
     @InjectRepository(RefreshToken)
-    private refreshTokenRepository: Repository<RefreshToken>,
-    private userService: UserService,
-    private adminService: AdminService,
-    private jwtService: JwtService,
-    private configService: ConfigService,
+    private readonly refreshTokenRepository: Repository<RefreshToken>,
+    private readonly userService: UserService,
+    private readonly adminService: AdminService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -62,7 +62,11 @@ export class TokenService {
     return token;
   }
 
-  async refreshAccessToken(refreshTokenString: string) {
+  async refreshAccessToken(refreshTokenString: string): Promise<{
+    accessToken: string;
+    accessTokenExpiresAt: number;
+    user: { id: string };
+  }> {
     const tokenHash = sha256Hex(refreshTokenString);
 
     const refreshToken = await this.refreshTokenRepository.findOne({

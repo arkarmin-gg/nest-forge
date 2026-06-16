@@ -1,6 +1,5 @@
 import {
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
@@ -13,7 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AdminService } from 'src/modules/admin/api';
+import { RoleDeletionService } from 'src/modules/admin/api';
 import { LogAction, LogActivity } from 'src/modules/log/api';
 import {
   CreateRoleDto,
@@ -30,7 +29,7 @@ import {
 export class RoleController {
   constructor(
     private readonly roleService: RoleService,
-    private readonly adminService: AdminService,
+    private readonly roleDeletionService: RoleDeletionService,
   ) {}
 
   @Get()
@@ -105,14 +104,6 @@ export class RoleController {
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'delete' },
   )
   async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const hasAssignedAdmins = await this.adminService.hasAdminsWithRole(id);
-    if (hasAssignedAdmins) {
-      throw new ConflictException(
-        'Cannot delete role that has admins assigned to it',
-      );
-    }
-
-    const deleted = await this.roleService.remove(id);
-    if (!deleted) throw new NotFoundException('Role not found');
+    await this.roleDeletionService.deleteRole(id);
   }
 }

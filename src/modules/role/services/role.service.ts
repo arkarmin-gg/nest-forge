@@ -6,10 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Transactional, TransactionContext } from 'src/common/transaction';
-import {
-  attachAuditLogMetadata,
-  diffAuditValues,
-} from 'src/modules/log/utils/audit-log-metadata.util';
+import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import { DataSource, FindManyOptions, ILike, In, Repository } from 'typeorm';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
@@ -23,11 +20,11 @@ export class RoleService {
 
   constructor(
     @InjectRepository(Role)
-    private roleRepository: Repository<Role>,
+    private readonly roleRepository: Repository<Role>,
     @InjectRepository(Permission)
-    private permissionRepository: Repository<Permission>,
+    private readonly permissionRepository: Repository<Permission>,
     @InjectDataSource()
-    private dataSource: DataSource,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(
@@ -35,7 +32,7 @@ export class RoleService {
     limit: number = 10,
     getAll: boolean = false,
     search?: string,
-  ) {
+  ): Promise<{ items: Role[]; total: number }> {
     const skip = (page - 1) * limit;
     const findOptions: FindManyOptions<Role> = {
       order: { createdAt: 'DESC' },
@@ -62,7 +59,7 @@ export class RoleService {
     return { items, total };
   }
 
-  async findAllPermissions() {
+  async findAllPermissions(): Promise<Permission[]> {
     return this.permissionRepository
       .createQueryBuilder('permission')
       .leftJoinAndSelect('permission.module', 'module')

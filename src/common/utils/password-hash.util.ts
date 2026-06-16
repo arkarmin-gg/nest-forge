@@ -9,3 +9,11 @@ export async function hashPasswordIfNeeded(password: string): Promise<string> {
   const rounds = Number(process.env.AUTH_PASSWORD_SALT_ROUNDS ?? 10);
   return bcrypt.hash(password, rounds);
 }
+
+export async function comparePassword(
+  plain: string,
+  hash: string,
+): Promise<boolean> {
+  if (!plain || !hash) return false;
+  return bcrypt.compare(plain, hash);
+}

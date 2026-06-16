@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import { AuditEntity } from 'src/common/entities/audit.entity';
 import { Admin } from 'src/modules/admin/entities/admin.entity';
 import { User } from 'src/modules/user/entities/user.entity';
@@ -48,7 +49,8 @@ export class OtpRecord extends AuditEntity {
   @Column({ type: 'enum', enum: OtpPurpose })
   purpose!: OtpPurpose;
 
-  @Column()
+  @Exclude()
+  @Column({ select: false })
   codeHash!: string;
 
   @Index()

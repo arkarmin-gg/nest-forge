@@ -1,9 +1,8 @@
 # Architecture Compliance Rubric
 
 > **Source of truth** for automated code review of `nest-forge`. Tool-agnostic — any AI
-> agent (Claude Code, Codex, Cursor, …) follows this file. The Claude skill
-> (`.claude/skills/architecture-review/`) and root `AGENTS.md` are thin wrappers that
-> point here.
+> agent (Claude Code, Codex, Cursor, …) follows this file. The `architecture-review`
+> Claude skill and root `AGENTS.md` are thin wrappers that point here.
 >
 > **Authoritative docs:** [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [`CONTEXT.md`](../../CONTEXT.md),
 > [`docs/adr/`](../adr/). When a rule and the cited source disagree, the source wins —
@@ -34,12 +33,13 @@ Each rule: `id` · statement · **category** (Architecture / Standards / Securit
 | **ARCH-05** | Every domain module under `src/modules/` exposes both `index.ts` and `api.ts`, with no symbol exported from both. | mechanical | medium | §5 |
 | **ARCH-06** | App-zone endpoints (`src/api/v1/app/**`) map the entity to a whitelist response DTO via `plainToInstance(Dto, x, { excludeExtraneousValues: true })` and derive the target from `@CurrentUser()` — never a `:id` path param. | semantic | high | §4 / §7 / ADR-0006 |
 | **ARCH-07** | An endpoint restricted to one subject type uses `@UseGuards(SubjectGuard)` + `@RequireSubject('USER'\|'ADMIN')`. The whole `app/` zone is USER-only. | semantic | medium | §8 / ADR-0006 |
+| **ARCH-08** | No circular import dependencies between files (e.g. service A → B → A through barrels). `*.entity.ts` files are exempt — bidirectional TypeORM relations form intentional, lazily-resolved cycles. | mechanical | medium | §5 (Automated Enforcement) / §20 |
 
 ## Standards
 
 | id | rule | type | severity | source |
 |----|------|------|----------|--------|
-| **STD-01** | Entities extend `BaseEntity`. Append-only log tables may extend `AuditEntity` or use a documented raw-entity exception (`activity-log`, `audit-log` — integer PK for volume). | mechanical | medium | §9 |
+| **STD-01** | Entities extend `BaseEntity`. Append-only log tables may extend `AuditEntity` or use a documented raw-entity exception (`activity-log`, `audit-log` — integer PK for volume); many-to-many join tables (e.g. `role_permissions`) may use a raw entity with a composite key. | mechanical | medium | §9 |
 | **STD-02** | No `@Column({ unique: true })` on a soft-deletable entity. Scope uniqueness with a partial unique index `where: '"deletedAt" IS NULL'`. | mechanical | high | §9 / ADR-0007 |
 | **STD-03** | Soft delete only (`@DeleteDateColumn` + `softRemove`). Never physically delete rows. | semantic | medium | §9 |
 | **STD-04** | Sensitive columns (passwords, secrets) carry `@Exclude()` and `{ select: false }`. | semantic | high | §9 / §19 security |
@@ -70,6 +70,9 @@ Run from the repo root. These are **read-only** (no `--fix`). Capture and report
 # Lint (boundary + style rules; eslint.config.mjs already blocks deep imports → ARCH-03)
 npx eslint "{src,apps,libs,test}/**/*.ts"
 
+# ARCH-08 — circular dependencies (same eslint run; filter for the rule)
+npx eslint "{src,apps,libs,test}/**/*.ts" 2>&1 | grep "no-cycle"
+
 # Type check
 npx tsc --noEmit -p tsconfig.json
 
@@ -98,8 +101,10 @@ grep -rn "@InjectRepository" src/modules/*/services --include="*.ts"
 grep -rnE "bcrypt(js)?\.(hash|compare)" src/modules --include="*.ts"
 ```
 
-> ARCH-03 is enforced by ESLint's `no-restricted-imports` in `eslint.config.mjs`; treat any
-> `no-restricted-imports` error as an ARCH-03 finding. The `grep` rules surface *candidates* —
+> ARCH-03 and ARCH-08 are enforced by ESLint in `eslint.config.mjs`: a `no-restricted-imports`
+> error is an ARCH-03 finding; an `import-x/no-cycle` error is an ARCH-08 finding. Both rules are
+> exempted for `*.entity.ts` (sanctioned cross-module entity imports), so an entity importing
+> another entity's file directly is **not** a finding. The `grep` rules surface *candidates* —
 > confirm each with reasoning before reporting (e.g. ARCH-01: only cross-module injections count;
 > same-module `@InjectRepository` is fine).
 
@@ -109,11 +114,11 @@ Group findings by severity (High → Medium → Low). Separate **Mechanical** an
 findings. Each finding:
 
 ```
-[ARCH-01] high · src/modules/auth/services/password-reset.service.ts:36
+[ARCH-01] high · src/modules/<module>/services/<name>.service.ts:NN   (illustrative)
   rule:   A domain service must not inject another module's repository.
   source: ARCHITECTURE.md §19 #2 / ADR-0004
-  detail: PasswordResetService injects User & Admin repositories from other modules.
-  fix:    Inject UserService / AdminService and call findByPhone() / findByEmail() instead.
+  detail: Service injects @InjectRepository(ForeignEntity) owned by another module.
+  fix:    Inject the owning module's service (e.g. UserService) and call its method instead.
 ```
 
 End with a summary table (counts by category × severity) and the raw mechanical-tool output

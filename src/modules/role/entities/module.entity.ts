@@ -1,16 +1,16 @@
+import slugify from 'slugify';
+import { BaseEntity } from 'src/common/entities/base.entity';
 import {
-  Entity,
-  Column,
-  OneToMany,
-  ManyToOne,
-  JoinColumn,
   BeforeInsert,
   BeforeUpdate,
+  Column,
+  Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
 } from 'typeorm';
-import slugify from 'slugify';
 import { Permission } from './permission.entity';
-import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('modules')
 @Index('UQ_modules_code_active', ['code'], {

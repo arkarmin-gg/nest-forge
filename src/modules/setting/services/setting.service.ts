@@ -2,10 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToClass } from 'class-transformer';
-import {
-  attachAuditLogMetadata,
-  diffAuditValues,
-} from 'src/modules/log/utils/audit-log-metadata.util';
+import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import { Setting } from '../entities/setting.entity';
 import { CreateSMTPDto } from '../dto/create-smtp-setting.dto';
 import { SMTPResponseDto } from '../dto/smtp-response.dto';
@@ -14,10 +11,12 @@ import { SMTPResponseDto } from '../dto/smtp-response.dto';
 export class SettingService {
   constructor(
     @InjectRepository(Setting)
-    private settingRepository: Repository<Setting>,
+    private readonly settingRepository: Repository<Setting>,
   ) {}
 
-  async createSMTPSettings(createSMTPDto: CreateSMTPDto) {
+  async createSMTPSettings(
+    createSMTPDto: CreateSMTPDto,
+  ): Promise<SMTPResponseDto> {
     let oldSettings: Record<string, unknown> = {};
     try {
       oldSettings = { ...(await this.getSMTPSettings()) } as Record<

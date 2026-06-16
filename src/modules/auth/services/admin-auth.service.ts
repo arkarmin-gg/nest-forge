@@ -8,9 +8,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { FileUploadService } from 'src/common/services/file-upload.service';
+import { comparePassword } from 'src/common/utils/password-hash.util';
 import { buildRequestContext } from 'src/common/utils/request-context.util';
 import { Admin } from 'src/modules/admin';
 import { AdminService } from 'src/modules/admin/api';
@@ -23,18 +23,32 @@ import { JwtPayload } from '../interfaces/user.interface';
 import { TokenService } from './token.service';
 import { TwoFactorService } from './two-factor.service';
 
+export interface AdminLoginResult {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: number;
+  refreshTokenExpiresAt: number;
+  user: { id: string };
+}
+
+export interface TwoFactorChallenge {
+  requiresTwoFactor: boolean;
+  userId: string;
+  message: string;
+}
+
 @Injectable()
 export class AdminAuthService {
   private readonly logger = new Logger(AdminAuthService.name);
 
   constructor(
-    private adminService: AdminService,
-    private tokenService: TokenService,
-    private twoFactorService: TwoFactorService,
-    private fileUploadService: FileUploadService,
-    private configService: ConfigService,
-    private jwtService: JwtService,
-    private eventEmitter: EventEmitter2,
+    private readonly adminService: AdminService,
+    private readonly tokenService: TokenService,
+    private readonly twoFactorService: TwoFactorService,
+    private readonly fileUploadService: FileUploadService,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async validateAdminById(id: string): Promise<Admin | null> {
@@ -45,18 +59,21 @@ export class AdminAuthService {
     email: string,
     plainPassword: string,
   ): Promise<Admin> {
-    const admin = await this.adminService.findByEmailWithRoleRelations(email);
+    const admin = await this.adminService.findByEmailWithPassword(email);
 
     if (!admin) throw new UnauthorizedException('Invalid credentials');
 
-    if (!(await bcrypt.compare(plainPassword, admin.password))) {
+    if (!(await comparePassword(plainPassword, admin.password))) {
       throw new UnauthorizedException('Invalid password');
     }
 
     return admin;
   }
 
-  private async completeAdminLogin(admin: Admin, request: Request) {
+  private async completeAdminLogin(
+    admin: Admin,
+    request: Request,
+  ): Promise<AdminLoginResult> {
     const payload: JwtPayload = {
       sub: admin.id,
       subjectType: 'ADMIN',
@@ -105,7 +122,10 @@ export class AdminAuthService {
     };
   }
 
-  async adminLogin(loginDto: AdminLoginDto, request: Request) {
+  async adminLogin(
+    loginDto: AdminLoginDto,
+    request: Request,
+  ): Promise<AdminLoginResult | TwoFactorChallenge> {
     let admin: Admin;
     try {
       admin = await this.validateAdmin(loginDto.email, loginDto.password);
@@ -152,7 +172,7 @@ export class AdminAuthService {
     userId: string,
     code: string,
     request: Request,
-  ) {
+  ): Promise<AdminLoginResult> {
     const isValidCode = await this.twoFactorService.validateLoginCode(
       userId,
       code,
@@ -181,7 +201,7 @@ export class AdminAuthService {
     updateProfileDto: UpdateProfileDto,
     _request: Request,
     file?: Express.Multer.File,
-  ) {
+  ): Promise<Admin> {
     const admin = await this.adminService.findByIdNullable(userId);
 
     if (!admin) {
@@ -232,14 +252,14 @@ export class AdminAuthService {
     dto: ChangePasswordDto,
     _request: Request,
   ): Promise<void> {
-    const admin = await this.adminService.findByIdNullable(userId);
+    const admin = await this.adminService.findByIdWithPassword(userId);
 
     if (!admin) {
       this.logger.warn(`Admin with ID '${userId}' not found`);
       throw new NotFoundException(`Admin with ID '${userId}' not found`);
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(
+    const isCurrentPasswordValid = await comparePassword(
       dto.currentPassword,
       admin.password,
     );

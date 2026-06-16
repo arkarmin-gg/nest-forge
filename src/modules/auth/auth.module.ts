@@ -1,22 +1,23 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TokenService } from './services/token.service';
-import { UserAuthService } from './services/user-auth.service';
-import { AdminAuthService } from './services/admin-auth.service';
-import { PasswordResetService } from './services/password-reset.service';
-import { TwoFactorService } from './services/two-factor.service';
-import { RefreshToken } from './entities/refresh-token.entity';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthController } from 'src/api/v1/auth/auth.controller';
+import { AdminModule } from 'src/modules/admin/admin.module';
 import { OtpModule } from 'src/modules/otp/otp.module';
-import { JwtStrategy } from './strategies/jwt.strategy';
+import { UserModule } from 'src/modules/user/user.module';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ResourceOwnershipGuard } from './guards/resource-ownership.guard';
 import { SubjectGuard } from './guards/subject.guard';
-import { AuthController } from 'src/api/v1/auth/auth.controller';
-import { UserModule } from 'src/modules/user/user.module';
-import { AdminModule } from 'src/modules/admin/admin.module';
+import { AdminAuthService } from './services/admin-auth.service';
+import { AuthProfileService } from './services/auth-profile.service';
+import { PasswordResetService } from './services/password-reset.service';
+import { TokenService } from './services/token.service';
+import { TwoFactorService } from './services/two-factor.service';
+import { UserAuthService } from './services/user-auth.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AdminModule } from 'src/modules/admin/admin.module';
     TokenService,
     UserAuthService,
     AdminAuthService,
+    AuthProfileService,
     PasswordResetService,
     TwoFactorService,
     JwtStrategy,
@@ -53,6 +55,7 @@ import { AdminModule } from 'src/modules/admin/admin.module';
     TokenService,
     UserAuthService,
     AdminAuthService,
+    AuthProfileService,
     PasswordResetService,
     TwoFactorService,
     JwtAuthGuard,

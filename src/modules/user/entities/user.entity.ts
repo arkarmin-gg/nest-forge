@@ -54,7 +54,7 @@ export class User extends BaseEntity {
   @Column()
   phone!: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, select: false })
   @Exclude()
   password!: string;
 

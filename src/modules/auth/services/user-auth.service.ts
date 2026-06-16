@@ -10,11 +10,11 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import * as appleSignin from 'apple-signin-auth';
-import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { FileUploadService } from 'src/common/services/file-upload.service';
 import { nowUtc } from 'src/common/utils/date-time.util';
+import { comparePassword } from 'src/common/utils/password-hash.util';
 import { buildRequestContext } from 'src/common/utils/request-context.util';
 import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
 import {
@@ -42,13 +42,13 @@ export class UserAuthService {
   private readonly logger = new Logger(UserAuthService.name);
 
   constructor(
-    private userService: UserService,
-    private tokenService: TokenService,
-    private smsPhoServiceUtils: SMSPhoServiceUtils,
-    private fileUploadService: FileUploadService,
-    private configService: ConfigService,
-    private jwtService: JwtService,
-    private eventEmitter: EventEmitter2,
+    private readonly userService: UserService,
+    private readonly tokenService: TokenService,
+    private readonly smsPhoServiceUtils: SMSPhoServiceUtils,
+    private readonly fileUploadService: FileUploadService,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async validateUserById(id: string): Promise<User | null> {
@@ -100,7 +100,7 @@ export class UserAuthService {
   }
 
   async userLogin(loginDto: UserLoginDto, request: Request) {
-    const user = await this.userService.findByPhone(loginDto.phone);
+    const user = await this.userService.findByPhoneWithPassword(loginDto.phone);
 
     if (!user || !user.password) {
       this.logger.warn(
@@ -120,7 +120,7 @@ export class UserAuthService {
       throw new UnauthorizedException('Invalid phone or password');
     }
 
-    const isPasswordValid = await bcrypt.compare(
+    const isPasswordValid = await comparePassword(
       loginDto.password,
       user.password,
     );
@@ -501,14 +501,14 @@ export class UserAuthService {
     dto: ChangePasswordDto,
     _request: Request,
   ): Promise<void> {
-    const user = await this.userService.findByIdNullable(userId);
+    const user = await this.userService.findByIdWithPassword(userId);
 
     if (!user) {
       this.logger.warn(`User with ID '${userId}' not found`);
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(
+    const isCurrentPasswordValid = await comparePassword(
       dto.currentPassword,
       user.password,
     );

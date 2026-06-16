@@ -6,19 +6,17 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { InjectRepository } from '@nestjs/typeorm';
-import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { comparePassword } from 'src/common/utils/password-hash.util';
 import {
   getMockOtpCode,
   isOtpMockEnabled,
 } from 'src/common/utils/otp-mock.util';
 import { Request } from 'express';
 import { buildRequestContext } from 'src/common/utils/request-context.util';
-import { Admin } from 'src/modules/admin';
+import { AdminService } from 'src/modules/admin/api';
 import { OtpPurpose, OtpStatus } from 'src/modules/otp';
 import { OtpService } from 'src/modules/otp/api';
-import { Repository } from 'typeorm';
 import {
   TWO_FACTOR_CODE_REQUESTED,
   TwoFactorCodeRequestedEvent,
@@ -31,15 +29,14 @@ export class TwoFactorService {
   private readonly logger = new Logger(TwoFactorService.name);
 
   constructor(
-    @InjectRepository(Admin)
-    private adminRepository: Repository<Admin>,
-    private otpService: OtpService,
-    private eventEmitter: EventEmitter2,
-    private configService: ConfigService,
+    private readonly adminService: AdminService,
+    private readonly otpService: OtpService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly configService: ConfigService,
   ) {}
 
   async enableTwoFactor(userId: string, email: string): Promise<void> {
-    const admin = await this.adminRepository.findOne({ where: { id: userId } });
+    const admin = await this.adminService.findByIdNullable(userId);
     if (!admin) {
       throw new BadRequestException('User not found');
     }
@@ -86,7 +83,7 @@ export class TwoFactorService {
     }
 
     await this.otpService.verify(record, code);
-    await this.adminRepository.update(userId, { isTwoFactorEnabled: true });
+    await this.adminService.updateFields(userId, { isTwoFactorEnabled: true });
 
     this.logger.log(`2FA enabled for user ${userId}`);
 
@@ -107,7 +104,7 @@ export class TwoFactorService {
   }
 
   async disableTwoFactor(userId: string, password: string): Promise<void> {
-    const admin = await this.adminRepository.findOne({ where: { id: userId } });
+    const admin = await this.adminService.findByIdWithPassword(userId);
     if (!admin) {
       throw new BadRequestException('User not found');
     }
@@ -115,7 +112,7 @@ export class TwoFactorService {
     if (!password) {
       throw new BadRequestException('Password is required to disable 2FA');
     }
-    if (!(await bcrypt.compare(password, admin.password))) {
+    if (!(await comparePassword(password, admin.password))) {
       throw new UnauthorizedException('Password does not match');
     }
 
@@ -125,13 +122,15 @@ export class TwoFactorService {
       status: OtpStatus.VERIFIED,
     });
 
-    await this.adminRepository.update(userId, { isTwoFactorEnabled: false });
+    await this.adminService.updateFields(userId, {
+      isTwoFactorEnabled: false,
+    });
 
     this.logger.log(`2FA disabled for user ${userId}`);
   }
 
   async sendVerificationCode(userId: string): Promise<void> {
-    const admin = await this.adminRepository.findOne({ where: { id: userId } });
+    const admin = await this.adminService.findByIdNullable(userId);
     if (!admin) {
       throw new BadRequestException('User not found');
     }
@@ -178,7 +177,7 @@ export class TwoFactorService {
   }
 
   async isTwoFactorEnabled(userId: string): Promise<boolean> {
-    const admin = await this.adminRepository.findOne({ where: { id: userId } });
+    const admin = await this.adminService.findByIdNullable(userId);
     return admin?.isTwoFactorEnabled || false;
   }
 

@@ -20,7 +20,7 @@ export class OtpService {
 
   constructor(
     @InjectRepository(OtpRecord)
-    private otpRecordRepository: Repository<OtpRecord>,
+    private readonly otpRecordRepository: Repository<OtpRecord>,
   ) {}
 
   async create(opts: {
@@ -54,15 +54,22 @@ export class OtpService {
     userId?: string;
     adminId?: string;
   }): Promise<OtpRecord | null> {
-    return this.otpRecordRepository.findOne({
-      where: {
-        purpose: opts.purpose,
-        status: OtpStatus.PENDING,
-        ...(opts.userId ? { userId: opts.userId } : {}),
-        ...(opts.adminId ? { adminId: opts.adminId } : {}),
-      },
-      order: { createdAt: 'DESC' },
-    });
+    // codeHash is `select: false`; re-select it because verify() compares it.
+    const qb = this.otpRecordRepository
+      .createQueryBuilder('otp')
+      .addSelect('otp.codeHash')
+      .where('otp.purpose = :purpose', { purpose: opts.purpose })
+      .andWhere('otp.status = :status', { status: OtpStatus.PENDING })
+      .orderBy('otp.createdAt', 'DESC');
+
+    if (opts.userId) {
+      qb.andWhere('otp.userId = :userId', { userId: opts.userId });
+    }
+    if (opts.adminId) {
+      qb.andWhere('otp.adminId = :adminId', { adminId: opts.adminId });
+    }
+
+    return qb.getOne();
   }
 
   async findOneByStatus(opts: {
@@ -89,14 +96,23 @@ export class OtpService {
     subjectId: string,
     purpose: OtpPurpose,
   ): Promise<OtpRecord | null> {
-    const byUser = await this.otpRecordRepository.findOne({
-      where: { userId: subjectId, purpose, status: OtpStatus.PENDING },
-    });
+    // codeHash is `select: false`; re-select it because verify() compares it.
+    const byUser = await this.otpRecordRepository
+      .createQueryBuilder('otp')
+      .addSelect('otp.codeHash')
+      .where('otp.userId = :subjectId', { subjectId })
+      .andWhere('otp.purpose = :purpose', { purpose })
+      .andWhere('otp.status = :status', { status: OtpStatus.PENDING })
+      .getOne();
     if (byUser) return byUser;
 
-    return this.otpRecordRepository.findOne({
-      where: { adminId: subjectId, purpose, status: OtpStatus.PENDING },
-    });
+    return this.otpRecordRepository
+      .createQueryBuilder('otp')
+      .addSelect('otp.codeHash')
+      .where('otp.adminId = :subjectId', { subjectId })
+      .andWhere('otp.purpose = :purpose', { purpose })
+      .andWhere('otp.status = :status', { status: OtpStatus.PENDING })
+      .getOne();
   }
 
   async verify(record: OtpRecord, code: string): Promise<void> {
@@ -134,14 +150,15 @@ export class OtpService {
   }): Promise<boolean> {
     const codeHash = sha256Hex(opts.code);
 
-    const record = await this.otpRecordRepository.findOne({
-      where: {
-        adminId: opts.adminId,
-        purpose: opts.purpose,
-        status: OtpStatus.PENDING,
-        codeHash,
-      },
-    });
+    // codeHash is `select: false`; re-select it because it is compared below.
+    const record = await this.otpRecordRepository
+      .createQueryBuilder('otp')
+      .addSelect('otp.codeHash')
+      .where('otp.adminId = :adminId', { adminId: opts.adminId })
+      .andWhere('otp.purpose = :purpose', { purpose: opts.purpose })
+      .andWhere('otp.status = :status', { status: OtpStatus.PENDING })
+      .andWhere('otp.codeHash = :codeHash', { codeHash })
+      .getOne();
 
     if (!record) return false;
 

@@ -6,25 +6,27 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
 import * as crypto from 'crypto';
 import { Request } from 'express';
-import { EmailServiceUtils } from 'src/common/utils/email-service.utils';
 import {
   getMockOtpCode,
   isOtpMockEnabled,
 } from 'src/common/utils/otp-mock.util';
 import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
-import { Admin } from 'src/modules/admin';
+import { AdminService } from 'src/modules/admin/api';
 import { OtpPurpose } from 'src/modules/otp';
 import { OtpService } from 'src/modules/otp/api';
-import { User } from 'src/modules/user';
-import { Repository } from 'typeorm';
+import { UserService } from 'src/modules/user/api';
 import { ForgotPasswordSendOTPDto } from '../dto/forgot-password-send-otp.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { UserForgotPasswordSendOTPDto } from '../dto/user-forgot-password-send-otp.dto';
 import { VerifyPasswordResetOTPCodeDto } from '../dto/verify-password-reset-otp-code.dto';
+import {
+  FORGOT_PASSWORD_CODE_REQUESTED,
+  ForgotPasswordCodeRequestedEvent,
+} from '../events/forgot-password-code-requested.event';
 import { TokenService } from './token.service';
 
 @Injectable()
@@ -32,16 +34,14 @@ export class PasswordResetService {
   private readonly logger = new Logger(PasswordResetService.name);
 
   constructor(
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
-    @InjectRepository(Admin)
-    private adminRepository: Repository<Admin>,
-    private otpService: OtpService,
-    private jwtService: JwtService,
-    private configService: ConfigService,
-    private emailServiceUtils: EmailServiceUtils,
-    private smsPhoServiceUtils: SMSPhoServiceUtils,
-    private tokenService: TokenService,
+    private readonly userService: UserService,
+    private readonly adminService: AdminService,
+    private readonly otpService: OtpService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly smsPhoServiceUtils: SMSPhoServiceUtils,
+    private readonly tokenService: TokenService,
   ) {}
 
   private generateCode(): string {
@@ -51,10 +51,13 @@ export class PasswordResetService {
     return crypto.randomInt(100000, 999999).toString();
   }
 
-  async passwordResetOTPSend(dto: ForgotPasswordSendOTPDto, _request: Request) {
+  async passwordResetOTPSend(
+    dto: ForgotPasswordSendOTPDto,
+    _request: Request,
+  ): Promise<{ userId: string }> {
     const { email } = dto;
 
-    const admin = await this.adminRepository.findOne({ where: { email } });
+    const admin = await this.adminService.findByEmail(email);
     if (!admin) {
       this.logger.warn(`Admin with email '${email}' not found`);
       throw new NotFoundException(`Admin with email '${email}' not found`);
@@ -67,13 +70,16 @@ export class PasswordResetService {
       code,
     });
 
-    await this.emailServiceUtils.sendForgotPasswordResetCode({
-      code,
-      email: admin.email,
-      userName: admin.fullName,
-      fromUsername: this.configService.get<string>('SMTP_FROM_NAME', ''),
-      expiresIn: 10,
-    });
+    this.eventEmitter.emit(
+      FORGOT_PASSWORD_CODE_REQUESTED,
+      new ForgotPasswordCodeRequestedEvent(
+        admin.email,
+        code,
+        admin.fullName,
+        this.configService.get<string>('SMTP_FROM_NAME', ''),
+        10,
+      ),
+    );
 
     this.logger.log(
       `Admin with ID '${admin.id}' sent forgot password OTP successfully`,
@@ -81,7 +87,9 @@ export class PasswordResetService {
     return { userId: admin.id };
   }
 
-  async verifyPasswordResetOTPCode(dto: VerifyPasswordResetOTPCodeDto) {
+  async verifyPasswordResetOTPCode(
+    dto: VerifyPasswordResetOTPCodeDto,
+  ): Promise<{ userId: string; accessToken: string }> {
     const record = await this.otpService.findPendingByAnySubject(
       dto.userId,
       OtpPurpose.RESET_PASSWORD,
@@ -108,7 +116,7 @@ export class PasswordResetService {
     return { userId: dto.userId, accessToken };
   }
 
-  async resetPassword(dto: ResetPasswordDto, _request: Request) {
+  async resetPassword(dto: ResetPasswordDto, _request: Request): Promise<void> {
     try {
       await this.jwtService.verifyAsync(dto.accessToken);
     } catch {
@@ -123,12 +131,10 @@ export class PasswordResetService {
 
     const { userId, type } = decoded;
 
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const user = await this.userService.findByIdNullable(userId);
 
     if (!user) {
-      const admin = await this.adminRepository.findOne({
-        where: { id: userId },
-      });
+      const admin = await this.adminService.findByIdNullable(userId);
 
       if (!admin) {
         this.logger.warn(
@@ -146,7 +152,7 @@ export class PasswordResetService {
       }
 
       admin.password = dto.newPassword;
-      await this.adminRepository.save(admin);
+      await this.adminService.saveEntity(admin);
 
       this.logger.log(
         `Admin with ID '${admin.id}' changed password successfully`,
@@ -161,7 +167,7 @@ export class PasswordResetService {
     }
 
     user.password = dto.newPassword;
-    await this.userRepository.save(user);
+    await this.userService.saveEntity(user);
 
     this.logger.log(`User with ID '${user.id}' changed password successfully`);
   }
@@ -169,9 +175,9 @@ export class PasswordResetService {
   async userPasswordResetOTPSend(
     dto: UserForgotPasswordSendOTPDto,
     _request: Request,
-  ) {
+  ): Promise<{ userId: string }> {
     const { phone } = dto;
-    const user = await this.userRepository.findOne({ where: { phone } });
+    const user = await this.userService.findByPhone(phone);
 
     if (!user) {
       this.logger.warn(`User with phone '${phone}' not found`);
@@ -197,10 +203,12 @@ export class PasswordResetService {
     return { userId: user.id };
   }
 
-  async userVerifyPasswordResetOTPCode(dto: VerifyPasswordResetOTPCodeDto) {
+  async userVerifyPasswordResetOTPCode(
+    dto: VerifyPasswordResetOTPCodeDto,
+  ): Promise<{ userId: string; accessToken: string }> {
     const { userId, code } = dto;
 
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const user = await this.userService.findByIdNullable(userId);
     if (!user) {
       this.logger.warn(`User with ID '${userId}' not found`);
       throw new NotFoundException(`User with ID '${userId}' not found`);
@@ -225,7 +233,10 @@ export class PasswordResetService {
     return { userId, accessToken };
   }
 
-  async userResetPassword(dto: ResetPasswordDto, _request: Request) {
+  async userResetPassword(
+    dto: ResetPasswordDto,
+    _request: Request,
+  ): Promise<void> {
     try {
       await this.jwtService.verifyAsync(dto.accessToken);
     } catch {
@@ -239,7 +250,7 @@ export class PasswordResetService {
     }
 
     const { userId } = decoded;
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const user = await this.userService.findByIdNullable(userId);
 
     if (!user) {
       throw new NotFoundException(
@@ -248,7 +259,7 @@ export class PasswordResetService {
     }
 
     user.password = dto.newPassword;
-    await this.userRepository.save(user);
+    await this.userService.saveEntity(user);
     await this.tokenService.revokeAllUserTokens(userId);
 
     this.logger.log(`User with ID '${user.id}' changed password successfully`);

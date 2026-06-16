@@ -19,3 +19,7 @@ export {
   TWO_FACTOR_CODE_REQUESTED,
   TwoFactorCodeRequestedEvent,
 } from './events/two-factor-code-requested.event';
+export {
+  FORGOT_PASSWORD_CODE_REQUESTED,
+  ForgotPasswordCodeRequestedEvent,
+} from './events/forgot-password-code-requested.event';

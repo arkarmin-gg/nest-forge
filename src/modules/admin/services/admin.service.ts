@@ -10,10 +10,7 @@ import {
   parseRangeEnd,
   parseRangeStart,
 } from 'src/common/utils/date-time.util';
-import {
-  attachAuditLogMetadata,
-  diffAuditValues,
-} from 'src/modules/log/utils/audit-log-metadata.util';
+import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import { RoleService } from 'src/modules/role/api';
 import { DeepPartial, Repository } from 'typeorm';
 import { CreateAdminDto } from '../dto/create-admin.dto';
@@ -27,14 +24,17 @@ export class AdminService {
 
   constructor(
     @InjectRepository(Admin)
-    private adminRepository: Repository<Admin>,
-    private roleService: RoleService,
-    private fileUploadService: FileUploadService,
+    private readonly adminRepository: Repository<Admin>,
+    private readonly roleService: RoleService,
+    private readonly fileUploadService: FileUploadService,
   ) {}
 
   // ─── Admin CRUD operations ────────────────────────────────────────────────
 
-  async create(createAdminDto: CreateAdminDto, file?: Express.Multer.File) {
+  async create(
+    createAdminDto: CreateAdminDto,
+    file?: Express.Multer.File,
+  ): Promise<Admin> {
     const existingEmailAdmin = await this.adminRepository.findOne({
       where: { email: createAdminDto.email },
     });
@@ -69,7 +69,9 @@ export class AdminService {
     return savedAdmin;
   }
 
-  async findAll(filter: FilterAdminDto) {
+  async findAll(
+    filter: FilterAdminDto,
+  ): Promise<{ items: Admin[]; total: number }> {
     const { getAll, limit, page } = filter;
     const skip = (page - 1) * limit;
 
@@ -113,7 +115,7 @@ export class AdminService {
     return { items, total };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
       where: { id },
       relations: [
@@ -134,7 +136,7 @@ export class AdminService {
     id: string,
     updateAdminDto: UpdateAdminDto,
     file?: Express.Multer.File,
-  ) {
+  ): Promise<Admin> {
     const existingAdmin = await this.adminRepository.findOne({ where: { id } });
 
     if (!existingAdmin) {
@@ -242,6 +244,30 @@ export class AdminService {
 
   async findByEmail(email: string): Promise<Admin | null> {
     return this.adminRepository.findOne({ where: { email } });
+  }
+
+  /**
+   * Loads an admin by email including the `select: false` password column.
+   * For credential validation only — never expose the returned entity directly.
+   */
+  async findByEmailWithPassword(email: string): Promise<Admin | null> {
+    return this.adminRepository
+      .createQueryBuilder('admin')
+      .addSelect('admin.password')
+      .where('admin.email = :email', { email })
+      .getOne();
+  }
+
+  /**
+   * Loads an admin by id including the `select: false` password column.
+   * For credential validation only — never expose the returned entity directly.
+   */
+  async findByIdWithPassword(id: string): Promise<Admin | null> {
+    return this.adminRepository
+      .createQueryBuilder('admin')
+      .addSelect('admin.password')
+      .where('admin.id = :id', { id })
+      .getOne();
   }
 
   async findByEmailWithRoleRelations(email: string): Promise<Admin | null> {

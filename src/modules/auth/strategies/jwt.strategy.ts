@@ -32,7 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         throw new UnauthorizedException('Invalid token');
       }
 
-      const { password: _p, hashPassword: _h, ...rest } = admin;
+      const { password: _p, ...rest } = admin;
 
       return {
         ...rest,
@@ -47,7 +47,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         throw new UnauthorizedException('Invalid token');
       }
 
-      const { password: _p, hashPassword: _h, ...rest } = user;
+      const { password: _p, ...rest } = user;
 
       return {
         ...rest,

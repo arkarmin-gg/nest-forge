@@ -1,13 +1,14 @@
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { NotificationService } from './notification.service';
-import { EmailProcessor } from './processors/email.processor';
-import { SmsProcessor } from './processors/sms.processor';
-import { TwoFactorCodeListener } from './listeners/two-factor-code.listener';
+import { Module } from '@nestjs/common';
 import {
   EMAIL_NOTIFICATION_QUEUE,
   SMS_NOTIFICATION_QUEUE,
 } from './constants/notification.constants';
+import { ForgotPasswordCodeListener } from './listeners/forgot-password-code.listener';
+import { TwoFactorCodeListener } from './listeners/two-factor-code.listener';
+import { NotificationService } from './notification.service';
+import { EmailProcessor } from './processors/email.processor';
+import { SmsProcessor } from './processors/sms.processor';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import {
     EmailProcessor,
     SmsProcessor,
     TwoFactorCodeListener,
+    ForgotPasswordCodeListener,
   ],
   exports: [NotificationService],
 })

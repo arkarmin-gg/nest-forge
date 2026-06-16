@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import { AuditEntity } from 'src/common/entities/audit.entity';
 import { Admin } from 'src/modules/admin/entities/admin.entity';
 import { User } from 'src/modules/user/entities/user.entity';
@@ -14,7 +15,8 @@ import {
 @Index(['userId', 'isRevoked'])
 @Index(['adminId', 'isRevoked'])
 export class RefreshToken extends AuditEntity {
-  @Column({ type: 'text' })
+  @Exclude()
+  @Column({ type: 'text', select: false })
   tokenHash!: string;
 
   @Index()

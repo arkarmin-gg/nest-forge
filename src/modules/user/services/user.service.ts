@@ -11,10 +11,7 @@ import { CreateUserDto } from '../dto/create-user.dto';
 import { FilterUserDto } from '../dto/filter-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { FileUploadService } from 'src/common/services/file-upload.service';
-import {
-  attachAuditLogMetadata,
-  diffAuditValues,
-} from 'src/modules/log/utils/audit-log-metadata.util';
+import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import {
   parseRangeStart,
   parseRangeEnd,
@@ -26,13 +23,16 @@ export class UserService {
 
   constructor(
     @InjectRepository(User)
-    private userRepository: Repository<User>,
-    private fileUploadService: FileUploadService,
+    private readonly userRepository: Repository<User>,
+    private readonly fileUploadService: FileUploadService,
   ) {}
 
   // ─── Admin CRUD operations ────────────────────────────────────────────────
 
-  async create(createUserDto: CreateUserDto, file?: Express.Multer.File) {
+  async create(
+    createUserDto: CreateUserDto,
+    file?: Express.Multer.File,
+  ): Promise<User> {
     const existingPhoneUser = await this.userRepository.findOne({
       where: { phone: createUserDto.phone },
     });
@@ -65,7 +65,9 @@ export class UserService {
     return savedUser;
   }
 
-  async findAll(filter: FilterUserDto) {
+  async findAll(
+    filter: FilterUserDto,
+  ): Promise<{ items: User[]; total: number }> {
     const { getAll, limit, page } = filter;
     const skip = (page - 1) * limit;
 
@@ -104,7 +106,7 @@ export class UserService {
     return { items, total };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { id },
     });
@@ -119,7 +121,7 @@ export class UserService {
     id: string,
     updateUserDto: UpdateUserDto,
     file?: Express.Multer.File,
-  ) {
+  ): Promise<User> {
     const existingUser = await this.userRepository.findOne({ where: { id } });
 
     if (!existingUser) {
@@ -204,6 +206,30 @@ export class UserService {
 
   async findByPhone(phone: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { phone } });
+  }
+
+  /**
+   * Loads a user by phone including the `select: false` password column.
+   * For credential validation only — never expose the returned entity directly.
+   */
+  async findByPhoneWithPassword(phone: string): Promise<User | null> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.phone = :phone', { phone })
+      .getOne();
+  }
+
+  /**
+   * Loads a user by id including the `select: false` password column.
+   * For credential validation only — never expose the returned entity directly.
+   */
+  async findByIdWithPassword(id: string): Promise<User | null> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :id', { id })
+      .getOne();
   }
 
   async findByPhoneAndStage(

@@ -132,7 +132,7 @@ nest-forge/
 │   │   ├── otp/
 │   │   ├── log/
 │   │   ├── setting/
-│   │   └── role/                    # Re-exports from auth module
+│   │   └── role/                    # RBAC — roles, permissions, guards (standalone module)
 │   │
 │   ├── infrastructure/              ← Technical Plumbing (No Business Logic)
 │   │   ├── database/
@@ -337,6 +337,15 @@ import { ProductService } from 'src/modules/product';
 ```
 
 The no-overlap rule means every symbol has exactly one canonical import path. There is no need to guess which barrel to check.
+
+### Automated Enforcement (ESLint)
+
+These boundaries are enforced mechanically by `eslint.config.mjs`, so `npm run lint` fails on a violation:
+
+- **`no-restricted-imports`** blocks deep imports into a module's internals (e.g. `src/modules/auth/services/token.service`) — you must import through the `index.ts` / `api.ts` barrel. `*.entity.ts` files are exempt, since TypeORM relations legitimately reach across module internals.
+- **`import-x/no-cycle`** (error) rejects circular import dependencies between files. Entity files are exempt because bidirectional TypeORM relations (e.g. `User` ↔ `RefreshToken`) form intentional, lazily-resolved cycles.
+
+An architecture violation surfaces as a lint error, not a runtime surprise.
 
 ---
 
@@ -877,7 +886,7 @@ To capture what changed, use `diffAuditValues` + `attachAuditLogMetadata` in the
 import {
   attachAuditLogMetadata,
   diffAuditValues,
-} from 'src/modules/log/utils/audit-log-metadata.util';
+} from 'src/modules/log/api';
 
 async updateAdmin(id: string, dto: UpdateAdminDto): Promise<Admin> {
   const before = await this.findById(id);
@@ -1003,6 +1012,15 @@ Nodemailer sends the email
 ```
 
 SMS works the same way via `SMS_NOTIFICATION_QUEUE` and `SmsProcessor`, except `sendSmsOtp`/`verifySmsOtp` await the job result because the caller needs the provider `requestId`/verification outcome.
+
+### Event-Driven Notifications
+
+Some notifications fire indirectly through domain events instead of a direct `NotificationService` call. The forgot-password flow is the reference example:
+
+1. The auth service emits `ForgotPasswordCodeRequestedEvent` (`FORGOT_PASSWORD_CODE_REQUESTED`, exported from `src/modules/auth`).
+2. `ForgotPasswordCodeListener` (`src/infrastructure/notification/listeners/`) subscribes and calls `notificationService.sendForgotPasswordResetCode()`, queuing the email.
+
+This keeps the auth module decoupled from notification infrastructure — auth emits, infrastructure reacts.
 
 ---
 
@@ -1324,6 +1342,7 @@ npm run db:reset
 6. **Never store presigned URLs in the database.** Store the S3 key only.
 7. **Never send emails/SMS synchronously.** Always queue them via `NotificationService`.
 8. **Always validate environment variables.** Add new vars to the Joi schema in `env.validation.ts`.
+9. **Respect module boundaries — they're linted.** `no-restricted-imports` and `import-x/no-cycle` in `eslint.config.mjs` enforce barrel imports and reject circular dependencies. Run `npm run lint`.
 
 ### Code Quality Rules
 
@@ -1385,6 +1404,7 @@ try {
 | Forgetting `@Exclude()` on password fields | Always add `@Exclude()` to sensitive columns |
 | Writing business logic in a controller | Move all logic to the service |
 | Creating entities without extending `BaseEntity` | Always extend `BaseEntity` |
+| Creating a circular import between modules | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/` |
 
 ---
 

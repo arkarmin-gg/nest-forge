@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   Patch,
@@ -22,6 +21,7 @@ import {
   AdminAuthService,
   AdminLoginDto,
   AuthenticatedUser,
+  AuthProfileService,
   ChangePasswordDto,
   CurrentUser,
   DisableTwoFactorDto,
@@ -51,11 +51,12 @@ import { LogAction, LogActivity } from 'src/modules/log/api';
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(
-    private userAuthService: UserAuthService,
-    private adminAuthService: AdminAuthService,
-    private tokenService: TokenService,
-    private passwordResetService: PasswordResetService,
-    private twoFactorService: TwoFactorService,
+    private readonly userAuthService: UserAuthService,
+    private readonly adminAuthService: AdminAuthService,
+    private readonly authProfileService: AuthProfileService,
+    private readonly tokenService: TokenService,
+    private readonly passwordResetService: PasswordResetService,
+    private readonly twoFactorService: TwoFactorService,
   ) {}
 
   private serializeDate(value: Date | string | null | undefined) {
@@ -197,10 +198,7 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
     @Req() request: Request,
   ) {
-    if (user.subjectType === 'ADMIN') {
-      return this.adminAuthService.updateProfile(user.id, dto, request, file);
-    }
-    return this.userAuthService.updateProfile(user.id, dto, request, file);
+    return this.authProfileService.updateProfile(user, dto, request, file);
   }
 
   @Put('me/password')
@@ -217,11 +215,7 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
     @Req() request: Request,
   ) {
-    if (user.subjectType === 'ADMIN') {
-      await this.adminAuthService.changePassword(user.id, dto, request);
-    } else {
-      await this.userAuthService.changePassword(user.id, dto, request);
-    }
+    await this.authProfileService.changePassword(user, dto, request);
   }
 
   @Delete('me')
@@ -237,12 +231,7 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
   ) {
-    if (user.subjectType === 'ADMIN') {
-      throw new ForbiddenException(
-        'Admins cannot delete their own account through this endpoint',
-      );
-    }
-    await this.userAuthService.deleteProfile(user.id, request);
+    await this.authProfileService.deleteProfile(user, request);
   }
 
   @Public()
