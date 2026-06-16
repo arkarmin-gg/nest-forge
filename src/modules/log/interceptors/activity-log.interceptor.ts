@@ -1,20 +1,20 @@
 import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
   CallHandler,
+  ExecutionContext,
+  Injectable,
   Logger,
+  NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { Request } from 'express';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
-import { ActivityLogService } from '../services/activity-log.service';
-import { AuditLogService } from '../services/audit-log.service';
+import { parseUserAgent } from 'src/common/utils/user-agent.util';
+import type { RequestWithUser } from 'src/modules/auth/api';
 import { LogAction } from '../constants/log-action.enum';
 import { LogStatus } from '../constants/log-status.enum';
-import { Reflector } from '@nestjs/core';
-import type { RequestWithUser } from 'src/modules/auth/api';
-import { Request } from 'express';
-import { parseUserAgent } from 'src/common/utils/user-agent.util';
+import { ActivityLogService } from '../services/activity-log.service';
+import { AuditLogService } from '../services/audit-log.service';
 import { consumeAuditLogMetadata } from '../utils/audit-log-metadata.util';
 
 export const LOG_ACTIVITY_KEY = 'logActivity';
@@ -91,7 +91,7 @@ export class ActivityLogInterceptor implements NestInterceptor {
             logOptions.getResourceId(result, request))
           : undefined) ??
         this.getResourceId(responseData) ??
-        request.params?.id;
+        (request.params?.id as string | undefined);
       const auditMetadata = consumeAuditLogMetadata(responseData);
 
       const context = {

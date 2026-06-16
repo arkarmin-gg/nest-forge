@@ -1,3 +1,4 @@
+import { createKeyv } from '@keyv/redis';
 import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
@@ -7,11 +8,10 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { redisStore } from 'cache-manager-redis-store';
-import { HealthModule } from 'src/infrastructure/health/health.module';
-import { NotificationModule } from 'src/infrastructure/notification/notification.module';
 import { RoleApiModule } from 'src/api/v1/admin/role/role-api.module';
 import { AppApiModule } from 'src/api/v1/app/app-api.module';
+import { HealthModule } from 'src/infrastructure/health/health.module';
+import { NotificationModule } from 'src/infrastructure/notification/notification.module';
 import { AdminModule } from 'src/modules/admin/admin.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
@@ -62,11 +62,11 @@ import dataSource from './data-source';
       isGlobal: true,
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        store: redisStore,
-        socket: {
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get('REDIS_PORT', 6379),
-        },
+        stores: [
+          createKeyv({
+            url: `redis://${configService.get('REDIS_HOST', 'localhost')}:${configService.get('REDIS_PORT', 6379)}`,
+          }),
+        ],
         ttl: 600 * 1000,
       }),
       inject: [ConfigService],

@@ -8,9 +8,14 @@ import {
 } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Public } from 'src/modules/auth/api';
 import { DataSource } from 'typeorm';
-import { version } from '../../../package.json';
+
+const { version } = JSON.parse(
+  readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
+) as { version: string };
 
 @SkipThrottle()
 @Controller('health')
