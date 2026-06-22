@@ -1,13 +1,13 @@
+import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
+import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { Transactional, TransactionContext } from 'src/common/transaction';
 import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
-import { DataSource, FindManyOptions, ILike, In, Repository } from 'typeorm';
+import { FindManyOptions, ILike, In } from 'typeorm';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
 import { Permission } from '../entities/permission.entity';
@@ -19,12 +19,7 @@ export class RoleService {
   private readonly logger = new Logger(RoleService.name);
 
   constructor(
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-    @InjectRepository(Permission)
-    private readonly permissionRepository: Repository<Permission>,
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
+    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
   ) {}
 
   async findAll(
@@ -55,13 +50,13 @@ export class RoleService {
       findOptions.take = limit;
     }
 
-    const [items, total] = await this.roleRepository.findAndCount(findOptions);
+    const [items, total] = await this.txHost.tx.findAndCount(Role, findOptions);
     return { items, total };
   }
 
   async findAllPermissions(): Promise<Permission[]> {
-    return this.permissionRepository
-      .createQueryBuilder('permission')
+    return this.txHost.tx
+      .createQueryBuilder(Permission, 'permission')
       .leftJoinAndSelect('permission.module', 'module')
       .leftJoinAndSelect('module.parent', 'parent')
       .leftJoinAndSelect('module.children', 'children')
@@ -72,7 +67,7 @@ export class RoleService {
   }
 
   async findOne(id: string): Promise<Role | null> {
-    return this.roleRepository.findOne({
+    return this.txHost.tx.findOne(Role, {
       where: { id },
       relations: [
         'rolePermissions',
@@ -84,7 +79,7 @@ export class RoleService {
 
   @Transactional()
   async create(createRoleDto: CreateRoleDto): Promise<Role | null> {
-    const existingRole = await this.roleRepository.findOne({
+    const existingRole = await this.txHost.tx.findOne(Role, {
       where: { name: createRoleDto.name },
     });
 
@@ -97,13 +92,12 @@ export class RoleService {
 
     await this.validatePermissionIds(createRoleDto.permissionIds);
 
-    const manager = TransactionContext.getManager()!;
-    const role = manager.create(Role, {
+    const role = this.txHost.tx.create(Role, {
       name: createRoleDto.name,
       description: createRoleDto.description,
       ...(createRoleDto.rank !== undefined && { rank: createRoleDto.rank }),
     });
-    const savedRole = await manager.save(role);
+    const savedRole = await this.txHost.tx.save(role);
 
     if (createRoleDto.permissionIds && createRoleDto.permissionIds.length > 0) {
       await this.assignPermissionsToRole(
@@ -113,7 +107,7 @@ export class RoleService {
     }
 
     this.logger.log(`Role created with ID: ${savedRole.id}`);
-    return manager.findOne(Role, {
+    return this.txHost.tx.findOne(Role, {
       where: { id: savedRole.id },
       relations: [
         'rolePermissions',
@@ -132,7 +126,7 @@ export class RoleService {
     }
 
     if (updateRoleDto.name && updateRoleDto.name !== role.name) {
-      const existingRole = await this.roleRepository.findOne({
+      const existingRole = await this.txHost.tx.findOne(Role, {
         where: { name: updateRoleDto.name },
       });
 
@@ -150,14 +144,12 @@ export class RoleService {
       await this.validatePermissionIds(updateRoleDto.permissionIds);
     }
 
-    const manager = TransactionContext.getManager()!;
-
     if (
       updateRoleDto.name ||
       updateRoleDto.description ||
       updateRoleDto.rank !== undefined
     ) {
-      await manager.update(Role, id, {
+      await this.txHost.tx.update(Role, id, {
         name: updateRoleDto.name,
         description: updateRoleDto.description,
         ...(updateRoleDto.rank !== undefined && { rank: updateRoleDto.rank }),
@@ -165,7 +157,7 @@ export class RoleService {
     }
 
     if (updateRoleDto.permissionIds !== undefined) {
-      await manager.delete(RolePermission, { roleId: id });
+      await this.txHost.tx.delete(RolePermission, { roleId: id });
 
       if (updateRoleDto.permissionIds.length > 0) {
         await this.assignPermissionsToRole(id, updateRoleDto.permissionIds);
@@ -173,7 +165,7 @@ export class RoleService {
     }
 
     this.logger.log(`Role updated with ID: ${id}`);
-    const updatedRole = await manager.findOne(Role, {
+    const updatedRole = await this.txHost.tx.findOne(Role, {
       where: { id },
       relations: [
         'rolePermissions',
@@ -202,7 +194,7 @@ export class RoleService {
       return false;
     }
 
-    await this.roleRepository.softDelete(id);
+    await this.txHost.tx.softDelete(Role, id);
     this.logger.log(`Role with ID '${id}' has been successfully soft deleted`);
     return true;
   }
@@ -212,7 +204,7 @@ export class RoleService {
       return;
     }
 
-    const existingPermissions = await this.permissionRepository.findBy({
+    const existingPermissions = await this.txHost.tx.findBy(Permission, {
       id: In(permissionIds),
     });
 
@@ -232,10 +224,9 @@ export class RoleService {
     roleId: string,
     permissionIds: string[],
   ): Promise<void> {
-    const manager = TransactionContext.getManager()!;
     const rolePermissions = permissionIds.map((permissionId) =>
-      manager.create(RolePermission, { roleId, permissionId }),
+      this.txHost.tx.create(RolePermission, { roleId, permissionId }),
     );
-    await manager.save(RolePermission, rolePermissions);
+    await this.txHost.tx.save(RolePermission, rolePermissions);
   }
 }
