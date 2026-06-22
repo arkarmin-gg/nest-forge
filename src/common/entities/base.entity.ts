@@ -2,12 +2,15 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Index,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 export abstract class BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({
+    type: 'uuid',
+    default: () => 'gen_random_uuid()',
+  })
   id!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })

@@ -35,12 +35,12 @@
 
 ### The Problem With Two Extremes
 
-| Traditional Monolith | Microservices |
-|----------------------|---------------|
-| Fast to start, turns into a spaghetti mess | Clean boundaries, but complex infrastructure |
-| One codebase, zero network overhead | Network latency, distributed tracing, service discovery |
-| Hard to scale specific parts | Scale each service independently |
-| Refactoring is painful and risky | Independent deployment, but huge operational cost |
+| Traditional Monolith                       | Microservices                                           |
+| ------------------------------------------ | ------------------------------------------------------- |
+| Fast to start, turns into a spaghetti mess | Clean boundaries, but complex infrastructure            |
+| One codebase, zero network overhead        | Network latency, distributed tracing, service discovery |
+| Hard to scale specific parts               | Scale each service independently                        |
+| Refactoring is painful and risky           | Independent deployment, but huge operational cost       |
 
 **Modular Monolith** sits in the sweet spot:
 
@@ -76,19 +76,19 @@
 
 ## 2. Technology Stack
 
-| Category | Technology | Version |
-|----------|-----------|---------|
-| Framework | NestJS | v11 |
-| Language | TypeScript | 5.9 |
-| Database | PostgreSQL + TypeORM | 0.3 |
-| Cache / Queues | Redis + BullMQ | Latest |
-| Auth | JWT + bcryptjs + Passport | — |
-| File Storage | AWS S3 | — |
-| Validation | class-validator + class-transformer | — |
-| Env Validation | Joi | — |
-| Logging | Winston + daily-rotate-file | — |
-| Testing | Jest | — |
-| Process Manager | PM2 | Production |
+| Category        | Technology                          | Version    |
+| --------------- | ----------------------------------- | ---------- |
+| Framework       | NestJS                              | v11        |
+| Language        | TypeScript                          | 5.9        |
+| Database        | PostgreSQL + TypeORM                | 0.3        |
+| Cache / Queues  | Redis + BullMQ                      | Latest     |
+| Auth            | JWT + bcryptjs + Passport           | —          |
+| File Storage    | AWS S3                              | —          |
+| Validation      | class-validator + class-transformer | —          |
+| Env Validation  | Joi                                 | —          |
+| Logging         | Winston + daily-rotate-file         | —          |
+| Testing         | Jest                                | —          |
+| Process Manager | PM2                                 | Production |
 
 ---
 
@@ -183,6 +183,7 @@ Understanding these four zones is **mandatory** before writing any code.
 **Responsibility:** Receive HTTP requests, delegate to services, return responses.
 
 **Rules:**
+
 - Controllers contain **zero business logic**
 - No database queries, no data transformation
 - Only call service methods and return the result
@@ -230,6 +231,7 @@ Reference example: `src/api/v1/app/user/user-app.controller.ts` (`GET`/`PATCH /a
 **Responsibility:** All business logic. This is where your application's value lives.
 
 Each module contains:
+
 - `entities/` — TypeORM entities (the data model)
 - `dto/` — Data Transfer Objects for input validation
 - `services/` — Business logic
@@ -238,6 +240,7 @@ Each module contains:
 - `api.ts` — Services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
 
 **Rules:**
+
 - A module **only accesses its own entities**
 - To use another module's data, call that module's **exported service**
 - Always expose both `index.ts` and `api.ts` barrels — no symbol appears in both
@@ -280,18 +283,18 @@ modules/
 
 Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home.
 
-| | `index.ts` | `api.ts` |
-|---|---|---|
-| **Used by** | Other domain modules, `app.module.ts` | Controllers in `src/api/v1/` only |
-| **Exports** | Module class, entities, events, domain interfaces, guards used as providers | DTOs, services, decorators for routes |
-| **Never exports** | DTOs, route decorators, route guards | Module class, entities, events, internal interfaces |
+|                   | `index.ts`                                                                  | `api.ts`                                            |
+| ----------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
+| **Used by**       | Other domain modules, `app.module.ts`                                       | Controllers in `src/api/v1/` only                   |
+| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | DTOs, services, decorators for routes               |
+| **Never exports** | DTOs, route decorators, route guards                                        | Module class, entities, events, internal interfaces |
 
 **`index.ts` — Module wiring and domain types**
 
 ```typescript
 // modules/product/index.ts
-export { ProductModule } from './product.module';       // ← module class, for app.module.ts
-export { Product } from './entities/product.entity';    // ← entity, for domain services that need the type
+export { ProductModule } from './product.module'; // ← module class, for app.module.ts
+export { Product } from './entities/product.entity'; // ← entity, for domain services that need the type
 export { ProductCreatedEvent } from './events/product-created.event'; // ← events
 // No ProductService — services live in api.ts
 // No DTOs — DTOs live in api.ts
@@ -432,6 +435,7 @@ Incoming HTTP Request
 ```
 
 > **Where each piece is actually registered** (the diagram shows logical order, not one file):
+>
 > - `RequestIdMiddleware` — `app.module.ts` via `configure(consumer)`.
 > - Global guards — **only** `JwtAuthGuard` and `ThrottlerGuard`, as `APP_GUARD` providers in [app.module.ts](src/app.module.ts). `RolesGuard`/`PermissionsGuard`/`ResourceOwnershipGuard`/`SubjectGuard` are **not** global — they run only where a handler/controller adds `@UseGuards(...)`.
 > - `TrimPipe` then `ValidationPipe` — `app.useGlobalPipes(...)` in [main.ts](src/main.ts).
@@ -450,7 +454,7 @@ Incoming HTTP Request
   "success": true,
   "statusCode": 200,
   "message": "Data retrieved successfully",
-  "data": { },
+  "data": {},
   "apiVersion": "v1",
   "timestamp": "2025-06-07T12:00:00.000Z"
 }
@@ -463,7 +467,7 @@ Incoming HTTP Request
   "success": true,
   "statusCode": 200,
   "message": "Data retrieved successfully",
-  "data": [ ],
+  "data": [],
   "meta": {
     "total": 100,
     "page": 1,
@@ -491,7 +495,7 @@ Incoming HTTP Request
 
 ### App-Zone Responses — Whitelist DTOs (Secure by Default)
 
-The default pipeline is *expose-everything-minus-`@Exclude()`*. That is fine for the trusted **admin** zone, but **app**-zone endpoints (USER subject) must send only the fields the client needs. Map the entity to a dedicated response DTO with whitelist semantics (see ADR-0006):
+The default pipeline is _expose-everything-minus-`@Exclude()`_. That is fine for the trusted **admin** zone, but **app**-zone endpoints (USER subject) must send only the fields the client needs. Map the entity to a dedicated response DTO with whitelist semantics (see ADR-0006):
 
 ```typescript
 // src/modules/user/dto/user-app-response.dto.ts
@@ -502,7 +506,9 @@ export class UserAppResponseDto {
 }
 
 // in the app controller
-return plainToInstance(UserAppResponseDto, user, { excludeExtraneousValues: true });
+return plainToInstance(UserAppResponseDto, user, {
+  excludeExtraneousValues: true,
+});
 ```
 
 `excludeExtraneousValues: true` drops any property without `@Expose()`, so a column added to the entity later **never** leaks to the app surface unless explicitly added to the DTO. The resulting DTO instance still flows through `ClassSerializerInterceptor` and `ResponseInterceptor` unchanged.
@@ -596,28 +602,33 @@ create(@Body() dto: CreateAdminDto) { ... }
 
 The system has two distinct authenticated subjects. **Always check `subjectType`** when authorization depends on it.
 
-| Property | User | Admin |
-|----------|------|-------|
-| `subjectType` | `'USER'` | `'ADMIN'` |
-| Identifier | `userId` | `adminId` |
-| Login method | Phone + Password / OAuth | Email + Password (+ 2FA) |
-| Has roles | No | Yes |
-| Has permissions | No | Yes |
+| Property        | User                     | Admin                    |
+| --------------- | ------------------------ | ------------------------ |
+| `subjectType`   | `'USER'`                 | `'ADMIN'`                |
+| Identifier      | `userId`                 | `adminId`                |
+| Login method    | Phone + Password / OAuth | Email + Password (+ 2FA) |
+| Has roles       | No                       | Yes                      |
+| Has permissions | No                       | Yes                      |
 
 ### Restricting an Endpoint to a Subject Type — `@RequireSubject`
 
 The global `JwtAuthGuard` only proves a token is valid — it does **not** distinguish USER from ADMIN. To restrict an endpoint to one subject type (e.g. the `app/` zone, which is USER-only), use `SubjectGuard` + `@RequireSubject` (symmetric with `PermissionsGuard` + `@RequirePermissions`):
 
 ```typescript
-import { RequireSubject, SubjectGuard, CurrentUser, AuthenticatedUser } from 'src/modules/auth/api';
+import {
+  RequireSubject,
+  SubjectGuard,
+  CurrentUser,
+  AuthenticatedUser,
+} from 'src/modules/auth/api';
 
 @Controller({ path: 'app/me', version: '1' })
 @UseGuards(SubjectGuard)
-@RequireSubject('USER')        // an ADMIN token → 403 Forbidden
+@RequireSubject('USER') // an ADMIN token → 403 Forbidden
 export class UserAppController {
   @Get()
   getProfile(@CurrentUser() user: AuthenticatedUser) {
-    return this.userService.findOne(user.id);   // target derived from the token, no :id param
+    return this.userService.findOne(user.id); // target derived from the token, no :id param
   }
 }
 ```
@@ -650,7 +661,10 @@ Every entity **must** extend `BaseEntity`. It is an **abstract** class (no `@Ent
 ```typescript
 // src/common/entities/base.entity.ts
 export abstract class BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({
+    type: 'uuid',
+    default: () => 'gen_random_uuid()',
+  })
   id!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
@@ -661,7 +675,7 @@ export abstract class BaseEntity {
 
   @Index()
   @DeleteDateColumn({ type: 'timestamptz' })
-  deletedAt?: Date;   // Soft delete — never physically delete rows
+  deletedAt?: Date; // Soft delete — never physically delete rows
 }
 ```
 
@@ -694,13 +708,13 @@ export class Product extends BaseEntity {
 
 ### Entity Rules
 
-| Rule | Reason |
-|------|--------|
-| Always extend `BaseEntity` | UUID PK, timestamps, soft delete included |
-| Use soft deletes only (`DeleteDateColumn`) | Data is auditable, recoverable |
-| Name tables explicitly with snake_case `@Entity('table_name')` | Avoids TypeORM naming surprises |
-| Use `nullable: true` explicitly when a column can be null | TypeORM defaults vary |
-| Exclude sensitive fields with `@Exclude()` | `ClassSerializerInterceptor` strips them automatically |
+| Rule                                                           | Reason                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------ |
+| Always extend `BaseEntity`                                     | UUID PK, timestamps, soft delete included              |
+| Use soft deletes only (`DeleteDateColumn`)                     | Data is auditable, recoverable                         |
+| Name tables explicitly with snake_case `@Entity('table_name')` | Avoids TypeORM naming surprises                        |
+| Use `nullable: true` explicitly when a column can be null      | TypeORM defaults vary                                  |
+| Exclude sensitive fields with `@Exclude()`                     | `ClassSerializerInterceptor` strips them automatically |
 
 ```typescript
 import { Exclude } from 'class-transformer';
@@ -721,7 +735,7 @@ Because soft delete leaves the row in place, a plain `@Column({ unique: true })`
   where: '"deletedAt" IS NULL',
 })
 export class User extends BaseEntity {
-  @Column()   // NOT @Column({ unique: true })
+  @Column() // NOT @Column({ unique: true })
   phone!: string;
 }
 ```
@@ -760,12 +774,12 @@ AllExceptionsFilter         ← Catch-all for unexpected errors
 
 ### PostgreSQL Error Code Mapping
 
-| PG Error Code | Meaning | HTTP Status |
-|---------------|---------|-------------|
-| `23505` | Unique constraint violation | 409 Conflict |
-| `23503` | Foreign key violation | 422 Unprocessable Entity |
-| `23502` | Not null violation | 400 Bad Request |
-| `22P02` | Invalid UUID format | 400 Bad Request |
+| PG Error Code | Meaning                     | HTTP Status              |
+| ------------- | --------------------------- | ------------------------ |
+| `23505`       | Unique constraint violation | 409 Conflict             |
+| `23503`       | Foreign key violation       | 422 Unprocessable Entity |
+| `23502`       | Not null violation          | 400 Bad Request          |
+| `22P02`       | Invalid UUID format         | 400 Bad Request          |
 
 ### How to Throw Errors in Services
 
@@ -801,10 +815,10 @@ async create(dto: CreateAdminDto): Promise<Admin> {
 
 ### Two Types of Logs
 
-| Type | Table | Purpose | Who writes it |
-|------|-------|---------|---------------|
-| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes) | Interceptor or `ActivityLogEvent` |
-| **AuditLog** | `audit_logs` | Admin-driven changes with `oldValue`/`newValue` diff | Interceptor or `AuditLogEvent` |
+| Type            | Table           | Purpose                                              | Who writes it                     |
+| --------------- | --------------- | ---------------------------------------------------- | --------------------------------- |
+| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)  | Interceptor or `ActivityLogEvent` |
+| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff | Interceptor or `AuditLogEvent`    |
 
 ### Two Write Paths
 
@@ -840,8 +854,10 @@ The interceptor automatically logs `LogStatus.SUCCESS` on completion and `LogSta
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildRequestContext } from 'src/common/utils/request-context.util';
 import {
-  ACTIVITY_LOG_EVENT, ActivityLogEvent,
-  LogAction, LogStatus,
+  ACTIVITY_LOG_EVENT,
+  ActivityLogEvent,
+  LogAction,
+  LogStatus,
 } from 'src/modules/log';
 
 @Injectable()
@@ -851,27 +867,33 @@ export class UserAuthService {
   async userLogin(dto: UserLoginDto, request: Request) {
     const user = await this.validateUser(dto).catch((error) => {
       // Log failure before re-throwing
-      this.eventEmitter.emit(ACTIVITY_LOG_EVENT, new ActivityLogEvent({
-        userId: 'unknown',
-        action: LogAction.LOGIN,
-        description: 'User login failed',
-        resourceType: 'Auth',
-        status: LogStatus.FAILURE,
-        ...buildRequestContext(request),
-      }));
+      this.eventEmitter.emit(
+        ACTIVITY_LOG_EVENT,
+        new ActivityLogEvent({
+          userId: 'unknown',
+          action: LogAction.LOGIN,
+          description: 'User login failed',
+          resourceType: 'Auth',
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        }),
+      );
       throw error;
     });
 
     // Log success
-    this.eventEmitter.emit(ACTIVITY_LOG_EVENT, new ActivityLogEvent({
-      userId: user.id,
-      action: LogAction.LOGIN,
-      description: 'User logged in',
-      resourceType: 'Auth',
-      resourceId: user.id,
-      status: LogStatus.SUCCESS,
-      ...buildRequestContext(request),
-    }));
+    this.eventEmitter.emit(
+      ACTIVITY_LOG_EVENT,
+      new ActivityLogEvent({
+        userId: user.id,
+        action: LogAction.LOGIN,
+        description: 'User logged in',
+        resourceType: 'Auth',
+        resourceId: user.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      }),
+    );
   }
 }
 ```
@@ -942,7 +964,10 @@ export class ProductService {
   constructor(private readonly fileUploadService: FileUploadService) {}
 
   async uploadImage(productId: string, file: Express.Multer.File) {
-    const key = await this.fileUploadService.upload(file, `products/${productId}`);
+    const key = await this.fileUploadService.upload(
+      file,
+      `products/${productId}`,
+    );
     return key; // Store this key in the database, NOT the presigned URL
   }
 }
@@ -971,12 +996,12 @@ Emails and SMS are **never sent synchronously** during a request. They are queue
 
 `NotificationService` exposes **purpose-specific** methods, not a generic `sendEmail`. The current methods are:
 
-| Method | Channel | Behaviour |
-|--------|---------|-----------|
-| `sendTwoFactorCode(payload)` | Email | Fire-and-forget (queued, returns `void`) |
-| `sendForgotPasswordResetCode(payload)` | Email | Fire-and-forget (queued, returns `void`) |
-| `sendSmsOtp(payload)` | SMS | Awaits the worker result → `{ success, requestId }` |
-| `verifySmsOtp(payload)` | SMS | Awaits the worker result → `{ success, verifiedAt, to }` |
+| Method                                 | Channel | Behaviour                                                |
+| -------------------------------------- | ------- | -------------------------------------------------------- |
+| `sendTwoFactorCode(payload)`           | Email   | Fire-and-forget (queued, returns `void`)                 |
+| `sendForgotPasswordResetCode(payload)` | Email   | Fire-and-forget (queued, returns `void`)                 |
+| `sendSmsOtp(payload)`                  | SMS     | Awaits the worker result → `{ success, requestId }`      |
+| `verifySmsOtp(payload)`                | SMS     | Awaits the worker result → `{ success, verifiedAt, to }` |
 
 ```typescript
 @Injectable()
@@ -1081,27 +1106,32 @@ A global `TrimPipe` runs **before** `ValidationPipe` on every request. It recurs
 
 **Behavior:**
 
-| Input type | Behavior |
-|------------|----------|
-| `body` / `query` strings | Trimmed (e.g. `"  hello  "` → `"hello"`) |
-| Nested object fields | Trimmed recursively |
-| Array items | Each string element trimmed |
-| Route `@Param()` | **Not trimmed** — URL params are never modified |
-| Non-string values | Passed through unchanged |
+| Input type               | Behavior                                        |
+| ------------------------ | ----------------------------------------------- |
+| `body` / `query` strings | Trimmed (e.g. `"  hello  "` → `"hello"`)        |
+| Nested object fields     | Trimmed recursively                             |
+| Array items              | Each string element trimmed                     |
+| Route `@Param()`         | **Not trimmed** — URL params are never modified |
+| Non-string values        | Passed through unchanged                        |
 
 No action needed — this is global and automatic. Validators run on already-trimmed values, so `@MinLength(3)` on `"  ab  "` correctly fails (the trimmed value `"ab"` has length 2).
 
 ```typescript
 // src/common/pipes/trim.pipe.ts — applied globally in main.ts
 app.useGlobalPipes(
-  new TrimPipe(),       // runs first
-  new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  new TrimPipe(), // runs first
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }),
 );
 ```
 
 ### Global Validation Pipe Settings
 
 The global `ValidationPipe` is configured with:
+
 - `whitelist: true` — strips unknown fields automatically
 - `forbidNonWhitelisted: true` — throws error on unknown fields
 - `transform: true` — auto-converts `"1"` to `1`, `"true"` to `true`
@@ -1121,9 +1151,7 @@ import { Transactional } from 'src/common/transaction/transactional.decorator';
 
 @Injectable()
 export class OrderService {
-  constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   @Transactional()
   async placeOrder(dto: PlaceOrderDto): Promise<Order> {
@@ -1138,6 +1166,7 @@ export class OrderService {
 ```
 
 **When to use `@Transactional()`:**
+
 - Creating multiple related records
 - Updating one record based on another
 - Any operation where partial failure would corrupt data
@@ -1148,27 +1177,27 @@ export class OrderService {
 
 ### Auth Decorators
 
-| Decorator | Import From | Effect |
-|-----------|-------------|--------|
-| `@Public()` | `src/modules/auth/api` | Bypasses JWT authentication |
-| `@CurrentUser()` | `src/modules/auth/api` | Injects current authenticated user |
-| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`) |
-| `@CheckOwnership()` | `src/modules/auth` | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
-| `@RequireRoles('admin', 'editor')` | `src/modules/role` | Restricts by role name (needs `@UseGuards(RolesGuard)`) |
-| `@RequirePermissions({...})` | `src/modules/role/api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`) |
+| Decorator                            | Import From            | Effect                                                                           |
+| ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------- |
+| `@Public()`                          | `src/modules/auth/api` | Bypasses JWT authentication                                                      |
+| `@CurrentUser()`                     | `src/modules/auth/api` | Injects current authenticated user                                               |
+| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`)                         |
+| `@CheckOwnership()`                  | `src/modules/auth`     | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
+| `@RequireRoles('admin', 'editor')`   | `src/modules/role`     | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
+| `@RequirePermissions({...})`         | `src/modules/role/api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
 
 ### Logging Decorators
 
-| Decorator | Import From | Effect |
-|-----------|-------------|--------|
+| Decorator                                                              | Import From           | Effect                                                                                                                                                             |
+| ---------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `@LogActivity({ action, description, resourceType?, getResourceId? })` | `src/modules/log/api` | Records user action to activity log on success **and** failure. Only works on authenticated (non-`@Public()`) endpoints — use service events for public endpoints. |
 
 ### Common Decorators
 
-| Decorator | Import From | Effect |
-|-----------|-------------|--------|
-| `@RequestTimeout(ms)` | `src/common/decorators/request-timeout.decorator` | Overrides 10s global request timeout |
-| `@ResolvePresignedUrls(...fields)` | `src/common/decorators/presigned-urls.decorator` | Auto-converts S3 keys to URLs in response |
+| Decorator                          | Import From                                       | Effect                                    |
+| ---------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| `@RequestTimeout(ms)`              | `src/common/decorators/request-timeout.decorator` | Overrides 10s global request timeout      |
+| `@ResolvePresignedUrls(...fields)` | `src/common/decorators/presigned-urls.decorator`  | Auto-converts S3 keys to URLs in response |
 
 ---
 
@@ -1253,12 +1282,12 @@ npx ts-node cli/index.ts db --help
 
 **Why use `forge` instead of raw `npm run` scripts?**
 
-| | `forge` CLI | `npm run migration:*` |
-|---|---|---|
-| Migration output path | Enforced to `src/infrastructure/database/migrations/` | Must be typed manually (full path) |
-| Naming | Just pass the name: `AddProductTable` | Full path required |
-| Discoverability | `forge db --help` lists all sub-commands | Must read `package.json` |
-| Seeding | `forge db seed / clear / reset` | `npm run db:seed / db:clear / db:reset` |
+|                       | `forge` CLI                                           | `npm run migration:*`                   |
+| --------------------- | ----------------------------------------------------- | --------------------------------------- |
+| Migration output path | Enforced to `src/infrastructure/database/migrations/` | Must be typed manually (full path)      |
+| Naming                | Just pass the name: `AddProductTable`                 | Full path required                      |
+| Discoverability       | `forge db --help` lists all sub-commands              | Must read `package.json`                |
+| Seeding               | `forge db seed / clear / reset`                       | `npm run db:seed / db:clear / db:reset` |
 
 ### `forge db` Command Tree
 
@@ -1323,6 +1352,7 @@ npm run db:reset
 ```
 
 **Seeding creates:**
+
 - Default roles: `superadmin`, `admin`, `editor`, `viewer`
 - All permissions for all modules
 - Superadmin account (credentials from env vars)
@@ -1387,24 +1417,24 @@ try {
 
 ## 20. Common Mistakes to Avoid
 
-| Mistake | Correct Approach |
-|---------|-----------------|
-| Using `@LogActivity` on a `@Public()` endpoint | `@Public()` endpoints have no `request.user` — emit `ActivityLogEvent`/`AuditLogEvent` from the service instead |
-| Controller importing from `index.ts` | `index.ts` has no services or DTOs — controllers must use `api.ts` |
-| Domain service importing an entity or event from `api.ts` | Entities and events live in `index.ts` — `api.ts` has no entities |
-| Domain service importing a service from `index.ts` | Services live in `api.ts` — use `import { FooService } from 'src/modules/foo/api'` |
-| Re-exporting the same symbol in both barrels | Each symbol has exactly one home: services/DTOs/decorators → `api.ts`; module class/entities/events → `index.ts` |
-| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `api.ts` for services/DTOs, `index.ts` for entities/events |
-| Injecting `UserRepository` in `AuthService` | Call `UserService.findByPhone()` instead |
-| Calling `synchronize: true` in TypeORM config | Generate and run migrations |
-| Storing presigned S3 URLs in the database | Store the S3 key; resolve URLs at response time |
-| Sending emails inside a request handler | Queue via `NotificationService` |
-| Throwing raw `Error` objects | Throw NestJS `HttpException` subclasses |
-| Using `console.log` for debugging | Use `Logger` from `@nestjs/common` |
-| Forgetting `@Exclude()` on password fields | Always add `@Exclude()` to sensitive columns |
-| Writing business logic in a controller | Move all logic to the service |
-| Creating entities without extending `BaseEntity` | Always extend `BaseEntity` |
-| Creating a circular import between modules | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/` |
+| Mistake                                                                  | Correct Approach                                                                                                 |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Using `@LogActivity` on a `@Public()` endpoint                           | `@Public()` endpoints have no `request.user` — emit `ActivityLogEvent`/`AuditLogEvent` from the service instead  |
+| Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `api.ts`                                               |
+| Domain service importing an entity or event from `api.ts`                | Entities and events live in `index.ts` — `api.ts` has no entities                                                |
+| Domain service importing a service from `index.ts`                       | Services live in `api.ts` — use `import { FooService } from 'src/modules/foo/api'`                               |
+| Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `api.ts`; module class/entities/events → `index.ts` |
+| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `api.ts` for services/DTOs, `index.ts` for entities/events                       |
+| Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                         |
+| Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                      |
+| Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                  |
+| Sending emails inside a request handler                                  | Queue via `NotificationService`                                                                                  |
+| Throwing raw `Error` objects                                             | Throw NestJS `HttpException` subclasses                                                                          |
+| Using `console.log` for debugging                                        | Use `Logger` from `@nestjs/common`                                                                               |
+| Forgetting `@Exclude()` on password fields                               | Always add `@Exclude()` to sensitive columns                                                                     |
+| Writing business logic in a controller                                   | Move all logic to the service                                                                                    |
+| Creating entities without extending `BaseEntity`                         | Always extend `BaseEntity`                                                                                       |
+| Creating a circular import between modules                               | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/`  |
 
 ---
 
@@ -1535,8 +1565,8 @@ export class ProductModule {}
 
 ```typescript
 // src/modules/product/index.ts
-export { ProductModule } from './product.module';       // for app.module.ts imports
-export { Product } from './entities/product.entity';    // entity type for other domain services
+export { ProductModule } from './product.module'; // for app.module.ts imports
+export { Product } from './entities/product.entity'; // entity type for other domain services
 // No ProductService — services live in api.ts
 // No DTOs — DTOs live in api.ts
 ```
@@ -1557,12 +1587,25 @@ export { FilterProductDto } from './dto/filter-product.dto';
 
 ```typescript
 // src/api/v1/admin/product/product.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
-import { ProductService, CreateProductDto, UpdateProductDto } from 'src/modules/product/api';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ProductService,
+  CreateProductDto,
+  UpdateProductDto,
+} from 'src/modules/product/api';
 import { RequireRoles, RolesGuard } from 'src/modules/role';
 
-@Controller({ path: 'admin/products', version: '1' })   // → /api/v1/admin/products
-@UseGuards(RolesGuard)                                    // guard applied once at class level
+@Controller({ path: 'admin/products', version: '1' }) // → /api/v1/admin/products
+@UseGuards(RolesGuard) // guard applied once at class level
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
@@ -1661,4 +1704,4 @@ Something broken?       Check logs/ directory. All errors are structured there.
 
 ---
 
-*This document reflects the architecture of nest-forge v3.x. When in doubt, read the existing code — it is the source of truth.*
+_This document reflects the architecture of nest-forge v3.x. When in doubt, read the existing code — it is the source of truth._
