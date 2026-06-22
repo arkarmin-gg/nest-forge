@@ -7,8 +7,16 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import { PRESIGNED_URLS_KEY } from '../decorators/presigned-urls.decorator';
+import {
+  PRESIGNED_URLS_KEY,
+  PresignedUrlField,
+} from '../decorators/presigned-urls.decorator';
 import { S3ClientUtils } from '../utils/s3-client.utils';
+
+type NormalizedPresignedUrlField = {
+  path: string;
+  as?: string;
+};
 
 @Injectable()
 export class PresignedUrlInterceptor implements NestInterceptor {
@@ -18,7 +26,7 @@ export class PresignedUrlInterceptor implements NestInterceptor {
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const fields = this.reflector.getAllAndOverride<string[]>(
+    const fields = this.reflector.getAllAndOverride<PresignedUrlField[]>(
       PRESIGNED_URLS_KEY,
       [context.getHandler(), context.getClass()],
     );
@@ -32,13 +40,7 @@ export class PresignedUrlInterceptor implements NestInterceptor {
         const { data } = response;
         if (!data) return response;
 
-        if (Array.isArray(data)) {
-          await Promise.all(
-            data.map((item) => this.transformFields(item, fields)),
-          );
-        } else {
-          await this.transformFields(data, fields);
-        }
+        await this.transformFields(data, fields);
 
         return response;
       }),
@@ -46,25 +48,77 @@ export class PresignedUrlInterceptor implements NestInterceptor {
   }
 
   private async transformFields(
-    obj: Record<string, any>,
-    fields: string[],
+    value: unknown,
+    fields: PresignedUrlField[],
   ): Promise<void> {
     await Promise.all(
-      fields.map(async (fieldPath) => {
-        const parts = fieldPath.split('.');
-        let target: Record<string, any> = obj;
-        for (let i = 0; i < parts.length - 1; i++) {
-          target = target?.[parts[i]] as Record<string, any>;
-          if (!target) return;
-        }
-        const lastKey = parts[parts.length - 1];
-        if (target?.[lastKey]) {
-          target[lastKey] =
-            (await this.s3ClientUtils.generatePresignedUrl(
-              target[lastKey] as string,
-            )) ?? '';
-        }
-      }),
+      fields.map((field) =>
+        this.transformField(value, this.normalizeField(field)),
+      ),
     );
+  }
+
+  private normalizeField(
+    field: PresignedUrlField,
+  ): NormalizedPresignedUrlField {
+    if (typeof field === 'string') {
+      return { path: field };
+    }
+
+    return field;
+  }
+
+  private async transformField(
+    value: unknown,
+    field: NormalizedPresignedUrlField,
+  ): Promise<void> {
+    const parts = field.path.split('.').filter(Boolean);
+    if (parts.length === 0) return;
+
+    await this.transformAtPath(value, parts, field.as);
+  }
+
+  private async transformAtPath(
+    value: unknown,
+    parts: string[],
+    outputKey?: string,
+  ): Promise<void> {
+    if (Array.isArray(value)) {
+      await Promise.all(
+        value.map((item) => this.transformAtPath(item, parts, outputKey)),
+      );
+      return;
+    }
+
+    if (!this.isRecord(value)) return;
+
+    const [currentKey, ...remainingParts] = parts;
+
+    if (remainingParts.length > 0) {
+      if (!Object.prototype.hasOwnProperty.call(value, currentKey)) return;
+
+      await this.transformAtPath(value[currentKey], remainingParts, outputKey);
+      return;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(value, currentKey)) return;
+
+    const resolvedUrl = await this.resolveUrl(value[currentKey]);
+    const targetKey = outputKey ?? currentKey;
+    value[targetKey] = resolvedUrl;
+
+    if (outputKey && outputKey !== currentKey) {
+      delete value[currentKey];
+    }
+  }
+
+  private async resolveUrl(value: unknown): Promise<string | null> {
+    if (typeof value !== 'string') return null;
+
+    return this.s3ClientUtils.generatePresignedUrl(value);
+  }
+
+  private isRecord(value: unknown): value is Record<string, any> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 }
