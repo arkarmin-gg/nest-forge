@@ -1,0 +1,74 @@
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+import { Admin } from 'src/modules/admin/entities/admin.entity';
+import { LogAction } from '../constants/log-action.enum';
+import { LogStatus } from '../constants/log-status.enum';
+
+@Entity('audit_logs')
+@Index(['adminId', 'action', 'createdAt'])
+@Index(['entityName', 'entityId'])
+export class AuditLog {
+  // Integer PK intentional: high-volume append-only log table (avoids UUID overhead)
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  // Nullable + SET NULL: audit history must survive admin account deletion
+  @Column({ type: 'uuid', nullable: true })
+  adminId!: string | null;
+
+  @ManyToOne(() => Admin, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'admin_id' })
+  admin!: Admin;
+
+  @Column({ type: 'varchar' })
+  action!: LogAction;
+
+  @Column({ type: 'text' })
+  description!: string;
+
+  @Column({ nullable: true })
+  entityName!: string;
+
+  @Column({ nullable: true })
+  entityId!: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  oldValue!: Record<string, unknown>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  newValue!: Record<string, unknown>;
+
+  @Column({ nullable: true })
+  ipAddress!: string;
+
+  @Column({ nullable: true })
+  userAgent!: string;
+
+  @Column({ nullable: true })
+  device!: string;
+
+  @Column({ nullable: true })
+  browser!: string;
+
+  @Column({ nullable: true })
+  os!: string;
+
+  @Column({ nullable: true })
+  location!: string;
+
+  @Column({ type: 'varchar', default: LogStatus.SUCCESS })
+  status!: LogStatus;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata!: Record<string, unknown>;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  createdAt!: Date;
+}

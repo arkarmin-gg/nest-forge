@@ -1,0 +1,60 @@
+import {
+  IsOptional,
+  IsEnum,
+  IsString,
+  IsDateString,
+  IsIn,
+} from 'class-validator';
+import { LogAction } from '../constants/log-action.enum';
+import { LogStatus } from '../constants/log-status.enum';
+import { PaginationFilterDto } from 'src/common/dto';
+
+export class FilterActivityLogDto extends PaginationFilterDto {
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsEnum(LogAction)
+  action?: LogAction;
+
+  @IsOptional()
+  @IsString()
+  resourceType?: string;
+
+  @IsOptional()
+  @IsString()
+  resourceId?: string;
+
+  @IsOptional()
+  @IsString()
+  ipAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  device?: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsEnum(LogStatus)
+  status?: LogStatus;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string = 'createdAt';
+
+  @IsOptional()
+  @IsIn(['ASC', 'DESC'])
+  sortOrder?: 'ASC' | 'DESC' = 'DESC';
+}
