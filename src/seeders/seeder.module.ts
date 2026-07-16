@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { envValidationSchema } from '../common/config/env.validation';
+import { envValidationSchema } from 'src/common/config';
 import dataSource from '../data-source';
 import { Admin } from 'src/modules/admin/entities/admin.entity';
 import { AdminSeeder } from 'src/modules/admin/seeders/admin.seeder';

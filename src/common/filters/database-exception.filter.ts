@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { QueryFailedError } from 'typeorm';
-import { ResponseUtil } from '../utils/response.util';
+import { ResponseUtil } from '../utils';
 
 interface PostgresDriverError {
   code?: string;
@@ -87,6 +87,17 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
               'Invalid UUID format',
               HttpStatus.BAD_REQUEST,
               'Bad Request',
+            ),
+          );
+
+      case '40001':
+        return response
+          .status(HttpStatus.CONFLICT)
+          .json(
+            ResponseUtil.error(
+              'This action conflicted with another concurrent request. Please try again.',
+              HttpStatus.CONFLICT,
+              'Conflict',
             ),
           );
 

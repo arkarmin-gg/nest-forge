@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 
 export default new DataSource({
   type: 'postgres',
@@ -11,5 +12,6 @@ export default new DataSource({
   database: process.env.DB_NAME,
   entities: [__dirname + '/**/*.entity.{ts,js}'],
   migrations: [__dirname + '/infrastructure/database/migrations/*.{ts,js}'],
+  namingStrategy: new SnakeNamingStrategy(),
   synchronize: false,
 });

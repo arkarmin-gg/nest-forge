@@ -10,11 +10,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { Request } from 'express';
-import {
-  getMockOtpCode,
-  isOtpMockEnabled,
-} from 'src/common/utils/otp-mock.util';
-import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
+import { getMockOtpCode, isOtpMockEnabled } from 'src/common/utils';
+import { SMSPohService } from 'src/common/services';
 import { AdminService } from 'src/modules/admin/api';
 import { OtpPurpose } from 'src/modules/otp';
 import { OtpService } from 'src/modules/otp/api';
@@ -40,7 +37,7 @@ export class PasswordResetService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
-    private readonly smsPhoServiceUtils: SMSPhoServiceUtils,
+    private readonly smsPohService: SMSPohService,
     private readonly tokenService: TokenService,
   ) {}
 
@@ -90,7 +87,7 @@ export class PasswordResetService {
   async verifyPasswordResetOTPCode(
     dto: VerifyPasswordResetOTPCodeDto,
   ): Promise<{ userId: string; accessToken: string }> {
-    const record = await this.otpService.findPendingByAnySubject(
+    const record = await this.otpService.findPendingOTPByAnySubject(
       dto.userId,
       OtpPurpose.RESET_PASSWORD,
     );
@@ -184,7 +181,7 @@ export class PasswordResetService {
       throw new NotFoundException(`User with phone '${phone}' not found`);
     }
 
-    const smsResponse = await this.smsPhoServiceUtils.sendOTP({
+    const smsResponse = await this.smsPohService.sendOTP({
       to: user.phone,
       message:
         "[{brand}] Dear customer, your OTP code is {code} for password reset. It'll expire in 30 minutes.",
@@ -218,7 +215,7 @@ export class PasswordResetService {
       { userId, purpose: OtpPurpose.RESET_PASSWORD },
       code,
       (requestId, otpCode) =>
-        this.smsPhoServiceUtils.verifyOTP({ requestId, code: otpCode }),
+        this.smsPohService.verifyOTP({ requestId, code: otpCode }),
     );
 
     const accessToken = this.jwtService.sign({

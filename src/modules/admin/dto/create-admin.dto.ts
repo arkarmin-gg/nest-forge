@@ -1,4 +1,3 @@
-import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
@@ -8,7 +7,8 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { IsPassword } from '../../../common/validators/is-password.validator';
+import { IsPassword } from 'src/common/validators';
+import { ToBoolean } from 'src/common/decorators';
 
 export class CreateAdminDto {
   @IsString({ message: 'Full name must be a string' })
@@ -30,12 +30,7 @@ export class CreateAdminDto {
   roleId!: string;
 
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === undefined || value === null) return undefined;
-    if (value === 'true' || value === '1' || value === true) return true;
-    if (value === 'false' || value === '0' || value === false) return false;
-    return undefined;
-  })
+  @ToBoolean()
   isBanned?: boolean;
 
   @IsOptional()

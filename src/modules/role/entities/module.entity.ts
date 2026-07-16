@@ -1,5 +1,5 @@
 import slugify from 'slugify';
-import { BaseEntity } from 'src/common/entities/base.entity';
+import { SoftDeletableEntity } from 'src/common/entities';
 import {
   BeforeInsert,
   BeforeUpdate,
@@ -15,9 +15,9 @@ import { Permission } from './permission.entity';
 @Entity('modules')
 @Index('UQ_modules_code_active', ['code'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
-export class ModuleEntity extends BaseEntity {
+export class ModuleEntity extends SoftDeletableEntity {
   @Column()
   name!: string;
 
@@ -30,7 +30,7 @@ export class ModuleEntity extends BaseEntity {
   @ManyToOne(() => ModuleEntity, (module) => module.children, {
     onDelete: 'SET NULL',
   })
-  @JoinColumn({ name: 'parentId' })
+  @JoinColumn({ name: 'parent_id' })
   parent?: ModuleEntity;
 
   @OneToMany(() => ModuleEntity, (module) => module.parent)

@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
+import { ResolvePresignedUrls } from 'src/common/decorators';
 import {
   ActivityLogService,
   AuditLogService,

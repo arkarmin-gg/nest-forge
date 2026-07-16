@@ -12,7 +12,7 @@ Split `AuthService` into purpose-cohesive services:
 
 - **`TokenService`** — refresh token generation, revocation, and access token refresh. No domain entity logic.
 - **`UserAuthService`** — user login (phone/password, Google, Apple), multi-step registration, user logout, user profile update, user password flows.
-- **`AdminAuthService`** — admin login, 2FA send/verify/login, admin logout, admin profile update, admin password flows.
+- **`AdminAuthService`** — admin login, admin logout, admin profile update, admin password flows.
 
 `UserAuthService` and `AdminAuthService` call `UserService` and `AdminService` respectively for entity access rather than injecting repositories directly.
 

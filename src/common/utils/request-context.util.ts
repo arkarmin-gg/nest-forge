@@ -2,7 +2,7 @@ import { Request } from 'express';
 import { parseUserAgent } from './user-agent.util';
 import { CreateActivityLogData } from 'src/modules/log/interfaces/create-activity-log.interface';
 
-export function getClientIp(request: Request): string {
+function getClientIp(request: Request): string {
   const forwarded = request.headers['x-forwarded-for'] as string;
   return (
     forwarded?.split(',')[0]?.trim() ||
@@ -22,7 +22,7 @@ export function buildRequestContext(
   const { device, browser, os } = parseUserAgent(request);
   return {
     ipAddress: getClientIp(request),
-    userAgent: (request.headers['user-agent'] as string) || '',
+    userAgent: request.headers['user-agent'] || '',
     device,
     browser,
     os,

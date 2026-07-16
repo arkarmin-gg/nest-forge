@@ -17,7 +17,7 @@ export class TrimPipe implements PipeTransform {
       }
 
       const result: Record<string, unknown> = {};
-      for (const key of Object.keys(value as Record<string, unknown>)) {
+      for (const key of Object.keys(value)) {
         result[key] = this.trimDeep((value as Record<string, unknown>)[key]);
       }
       return result;

@@ -7,8 +7,8 @@ import {
 import { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { ApiResponse } from '../interfaces/api-response.interface';
-import { ResponseUtil } from '../utils/response.util';
+import { ApiResponse } from '../interfaces';
+import { ResponseUtil } from '../utils';
 
 type PaginatedPayload<T> = { items: T[]; total: number };
 

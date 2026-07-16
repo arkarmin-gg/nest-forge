@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
-import { parseUserAgent } from 'src/common/utils/user-agent.util';
+import { parseUserAgent } from 'src/common/utils';
 import type { RequestWithUser } from 'src/modules/auth/api';
 import { LogAction } from '../constants/log-action.enum';
 import { LogStatus } from '../constants/log-status.enum';

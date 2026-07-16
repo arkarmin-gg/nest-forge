@@ -1,6 +1,6 @@
 import { Exclude } from 'class-transformer';
-import { BaseEntity } from 'src/common/entities/base.entity';
-import { hashPasswordIfNeeded } from 'src/common/utils/password-hash.util';
+import { SoftDeletableEntity } from 'src/common/entities';
+import { hashPasswordIfNeeded } from 'src/common/utils';
 import { RefreshToken } from 'src/modules/auth/entities/refresh-token.entity';
 import { Role } from 'src/modules/role/entities/role.entity';
 import {
@@ -17,9 +17,9 @@ import {
 @Entity('admins')
 @Index('UQ_admins_email_active', ['email'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
-export class Admin extends BaseEntity {
+export class Admin extends SoftDeletableEntity {
   @Index()
   @Column()
   fullName!: string;
@@ -32,14 +32,14 @@ export class Admin extends BaseEntity {
   email!: string;
 
   @Column({ nullable: true })
-  profileImageUrl!: string;
+  profileImageKey!: string;
 
   @Index()
   @Column()
   roleId!: string;
 
   @ManyToOne(() => Role, undefined, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'roleId' })
+  @JoinColumn({ name: 'role_id' })
   role!: Role;
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.admin)
@@ -48,9 +48,6 @@ export class Admin extends BaseEntity {
   @Index()
   @Column({ default: false })
   isBanned!: boolean;
-
-  @Column({ default: false })
-  isTwoFactorEnabled!: boolean;
 
   @Column({ type: 'timestamptz', nullable: true })
   lastLoginAt!: Date;

@@ -8,7 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable, TimeoutError, throwError } from 'rxjs';
 import { catchError, timeout } from 'rxjs/operators';
-import { REQUEST_TIMEOUT_KEY } from '../decorators/request-timeout.decorator';
+import { REQUEST_TIMEOUT_KEY } from '../decorators';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 

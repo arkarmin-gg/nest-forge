@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
 import { Request, Response } from 'express';
-import { ResponseUtil } from '../utils/response.util';
+import { ResponseUtil } from '../utils';
 
 @Catch(ThrottlerException)
 export class ThrottlerExceptionFilter implements ExceptionFilter {

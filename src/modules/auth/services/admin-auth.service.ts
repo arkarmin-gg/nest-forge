@@ -6,12 +6,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
-import { FileUploadService } from 'src/common/services/file-upload.service';
-import { comparePassword } from 'src/common/utils/password-hash.util';
-import { buildRequestContext } from 'src/common/utils/request-context.util';
+import { FileUploadService } from 'src/common/services';
+import { comparePassword } from 'src/common/utils';
+import { buildRequestContext } from 'src/common/utils';
 import { Admin } from 'src/modules/admin';
 import { AdminService } from 'src/modules/admin/api';
 import { AUDIT_LOG_EVENT, AuditLogEvent, LogStatus } from 'src/modules/log';
@@ -19,23 +19,9 @@ import { LogAction } from 'src/modules/log/api';
 import { AdminLoginDto } from '../dto/admin-login.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
+import { AdminLoginResult } from '../interfaces/admin-login-result.interface';
 import { JwtPayload } from '../interfaces/user.interface';
 import { TokenService } from './token.service';
-import { TwoFactorService } from './two-factor.service';
-
-export interface AdminLoginResult {
-  accessToken: string;
-  refreshToken: string;
-  accessTokenExpiresAt: number;
-  refreshTokenExpiresAt: number;
-  user: { id: string };
-}
-
-export interface TwoFactorChallenge {
-  requiresTwoFactor: boolean;
-  userId: string;
-  message: string;
-}
 
 @Injectable()
 export class AdminAuthService {
@@ -44,7 +30,6 @@ export class AdminAuthService {
   constructor(
     private readonly adminService: AdminService,
     private readonly tokenService: TokenService,
-    private readonly twoFactorService: TwoFactorService,
     private readonly fileUploadService: FileUploadService,
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
@@ -125,7 +110,7 @@ export class AdminAuthService {
   async adminLogin(
     loginDto: AdminLoginDto,
     request: Request,
-  ): Promise<AdminLoginResult | TwoFactorChallenge> {
+  ): Promise<AdminLoginResult> {
     let admin: Admin;
     try {
       admin = await this.validateAdmin(loginDto.email, loginDto.password);
@@ -144,19 +129,6 @@ export class AdminAuthService {
       throw error;
     }
 
-    const is2FAEnabled = await this.twoFactorService.isTwoFactorEnabled(
-      admin.id,
-    );
-
-    if (is2FAEnabled) {
-      await this.twoFactorService.sendVerificationCode(admin.id);
-      return {
-        requiresTwoFactor: true,
-        userId: admin.id,
-        message: 'Two-factor authentication code sent to your email',
-      };
-    }
-
     const fullAdmin = await this.adminService.findByIdWithRoleRelations(
       admin.id,
     );
@@ -166,34 +138,6 @@ export class AdminAuthService {
     }
 
     return this.completeAdminLogin(fullAdmin, request);
-  }
-
-  async verifyTwoFactorAndLogin(
-    userId: string,
-    code: string,
-    request: Request,
-  ): Promise<AdminLoginResult> {
-    const isValidCode = await this.twoFactorService.validateLoginCode(
-      userId,
-      code,
-    );
-
-    if (!isValidCode) {
-      this.logger.warn(
-        `Invalid or expired verification code for user with ID '${userId}'`,
-      );
-      throw new UnauthorizedException(
-        `Invalid or expired verification code for user with ID '${userId}'`,
-      );
-    }
-
-    const admin = await this.adminService.findByIdWithRoleRelations(userId);
-
-    if (!admin) {
-      throw new UnauthorizedException(`Admin with ID '${userId}' not found`);
-    }
-
-    return this.completeAdminLogin(admin, request);
   }
 
   async updateProfile(
@@ -219,7 +163,7 @@ export class AdminAuthService {
     const newProfileImageUrl = await this.fileUploadService.resolveUrl({
       file,
       bodyUrl: dto.profileImageUrl,
-      existingUrl: admin.profileImageUrl || '',
+      existingUrl: admin.profileImageKey || '',
       path: 'admins/profile',
     });
 
@@ -227,7 +171,7 @@ export class AdminAuthService {
       id: userId,
       fullName: dto.fullName ?? admin.fullName,
       email: dto.email ?? admin.email,
-      profileImageUrl: newProfileImageUrl,
+      profileImageKey: newProfileImageUrl,
     });
 
     if (!updatedAdmin) {
@@ -240,7 +184,7 @@ export class AdminAuthService {
 
     await this.fileUploadService.replace(
       newProfileImageUrl,
-      admin.profileImageUrl || '',
+      admin.profileImageKey || '',
     );
 
     this.logger.log(`Admin with ID '${admin.id}' profile updated successfully`);

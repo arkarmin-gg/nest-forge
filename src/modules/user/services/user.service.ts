@@ -5,17 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { FileUploadService } from 'src/common/services';
+import { parseRangeEnd, parseRangeStart } from 'src/common/utils';
+import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import { DeepPartial, FindOptionsWhere, Repository } from 'typeorm';
-import { User, UserRegistrationStage } from '../entities/user.entity';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { FilterUserDto } from '../dto/filter-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
-import { FileUploadService } from 'src/common/services/file-upload.service';
-import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
-import {
-  parseRangeStart,
-  parseRangeEnd,
-} from 'src/common/utils/date-time.util';
+import { User } from '../entities/user.entity';
 
 @Injectable()
 export class UserService {
@@ -26,8 +23,6 @@ export class UserService {
     private readonly userRepository: Repository<User>,
     private readonly fileUploadService: FileUploadService,
   ) {}
-
-  // ─── Admin CRUD operations ────────────────────────────────────────────────
 
   async create(
     createUserDto: CreateUserDto,
@@ -57,7 +52,8 @@ export class UserService {
 
     const user = this.userRepository.create({
       ...createUserDto,
-      profileImageUrl,
+      loginProvider: 'SMS',
+      profileImageKey: profileImageUrl,
     });
     const savedUser = await this.userRepository.save(user);
     this.logger.log(`User created with ID: ${savedUser.id}`);
@@ -146,14 +142,14 @@ export class UserService {
     const newProfileImageUrl = await this.fileUploadService.resolveUrl({
       file,
       bodyUrl: dto.profileImageUrl,
-      existingUrl: existingUser.profileImageUrl || '',
+      existingUrl: existingUser.profileImageKey || '',
       path: 'users/profile',
     });
 
     const updatedUser = await this.userRepository.preload({
       id,
       ...updateUserDto,
-      profileImageUrl: newProfileImageUrl,
+      profileImageKey: newProfileImageUrl,
     });
 
     if (!updatedUser) {
@@ -177,7 +173,7 @@ export class UserService {
 
     await this.fileUploadService.replace(
       newProfileImageUrl,
-      existingUser.profileImageUrl || '',
+      existingUser.profileImageKey || '',
     );
     this.logger.log(`User updated with ID: ${savedUser.id}`);
 
@@ -192,7 +188,7 @@ export class UserService {
       throw new NotFoundException(`User with ID '${id}' not found`);
     }
 
-    await this.fileUploadService.remove(existingUser.profileImageUrl || '');
+    await this.fileUploadService.remove(existingUser.profileImageKey || '');
 
     await this.userRepository.softRemove(existingUser);
     this.logger.log(`User with ID '${id}' has been successfully soft deleted`);
@@ -206,6 +202,18 @@ export class UserService {
 
   async findByPhone(phone: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { phone } });
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { email } });
+  }
+
+  async findByGoogleId(googleId: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { googleId } });
+  }
+
+  async findByAppleId(appleId: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { appleId } });
   }
 
   /**
@@ -232,34 +240,14 @@ export class UserService {
       .getOne();
   }
 
-  async findByPhoneAndStage(
-    phone: string,
-    stage: UserRegistrationStage,
-  ): Promise<User | null> {
-    return this.userRepository.findOne({
-      where: { phone, registrationStage: stage },
-    });
-  }
-
-  async findByIdAndStage(
-    id: string,
-    stage: UserRegistrationStage,
-  ): Promise<User | null> {
-    return this.userRepository.findOne({
-      where: { id, registrationStage: stage },
-    });
-  }
-
   async findByOAuth(
     provider: 'GOOGLE' | 'APPLE',
     providerId: string,
     email?: string,
   ): Promise<User | null> {
     const idField = provider === 'GOOGLE' ? 'googleId' : 'appleId';
-    const conditions: FindOptionsWhere<User>[] = [
-      { [idField]: providerId } as FindOptionsWhere<User>,
-    ];
-    if (email) conditions.push({ email } as FindOptionsWhere<User>);
+    const conditions: FindOptionsWhere<User>[] = [{ [idField]: providerId }];
+    if (email) conditions.push({ email });
 
     return this.userRepository.findOne({ where: conditions });
   }
@@ -290,5 +278,20 @@ export class UserService {
 
   async softDeleteEntity(user: User): Promise<void> {
     await this.userRepository.softRemove(user);
+  }
+
+  async isPhoneRegistered(phone: string): Promise<boolean> {
+    const user = await this.userRepository.findOne({
+      where: {
+        phone,
+      },
+      withDeleted: false,
+    });
+
+    if (!user) {
+      return false;
+    }
+
+    return Boolean(user.password || user.googleId || user.appleId);
   }
 }

@@ -1,10 +1,4 @@
-import {
-  IsIn,
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
  * Self-service profile update for the app zone (a USER editing their own /me).
@@ -19,19 +13,6 @@ export class UpdateUserProfileDto {
   @MinLength(2, { message: 'Full name must be at least 2 characters long' })
   @MaxLength(100, { message: 'Full name must not exceed 100 characters' })
   fullName?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Date of birth must be a string' })
-  dateOfBirth?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Gender must be a string' })
-  @IsIn(['male', 'female'], { message: 'Gender must be either male or female' })
-  gender?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Preferred language must be a string' })
-  preferLanguage?: string;
 
   @IsOptional()
   @IsString({ message: 'Profile image URL must be a string' })

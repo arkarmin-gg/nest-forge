@@ -1,5 +1,6 @@
 import { IsOptional, IsNumber, Min, IsBoolean } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
+import { ToBoolean } from 'src/common/decorators';
 
 export class PaginationFilterDto {
   @IsOptional()
@@ -16,11 +17,6 @@ export class PaginationFilterDto {
 
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => {
-    if (value === undefined || value === null) return undefined;
-    if (value === 'true' || value === '1' || value === true) return true;
-    if (value === 'false' || value === '0' || value === false) return false;
-    return undefined;
-  })
+  @ToBoolean()
   getAll: boolean = false;
 }

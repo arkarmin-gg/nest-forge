@@ -5,7 +5,7 @@ export const envValidationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   PORT: Joi.number().default(3000),
-  APP_NAME: Joi.string().default('NestJS TypeORM API Starter'),
+  APP_NAME: Joi.string().default('nest-forge'),
 
   // Database
   DB_HOST: Joi.string().required(),
@@ -26,6 +26,7 @@ export const envValidationSchema = Joi.object({
   // Redis
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().default(6379),
+  REDIS_PREFIX_KEY: Joi.string().default('nest-forge'),
 
   // CORS
   CORS_ORIGINS: Joi.string().optional(),
@@ -36,10 +37,6 @@ export const envValidationSchema = Joi.object({
   AWS_REGION: Joi.string().optional(),
   AWS_BUCKET_NAME: Joi.string().optional(),
   AWS_ENDPOINT: Joi.string().optional(),
-
-  // OAuth
-  GOOGLE_CLIENT_ID: Joi.string().optional(),
-  APPLE_CLIENT_ID: Joi.string().optional(),
 
   // Email
   SMTP_FROM_NAME: Joi.string().required(),

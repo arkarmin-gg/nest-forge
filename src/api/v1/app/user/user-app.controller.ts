@@ -9,8 +9,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { plainToInstance } from 'class-transformer';
-import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
-import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { ResolvePresignedUrls } from 'src/common/decorators';
+import { imageInterceptorOptions } from 'src/common/config';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -41,9 +41,10 @@ export class UserAppController {
   constructor(private readonly userService: UserService) {}
 
   @Get()
-  @ResolvePresignedUrls('profileImageUrl')
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   async getProfile(@CurrentUser() currentUser: AuthenticatedUser) {
     const user = await this.userService.findOne(currentUser.id);
+
     return this.toResponse(user);
   }
 
@@ -53,10 +54,8 @@ export class UserAppController {
     description: 'User updated their own profile',
     resourceType: 'User',
   })
-  @ResolvePresignedUrls('profileImageUrl')
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
+  @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   async updateProfile(
     @CurrentUser() currentUser: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,

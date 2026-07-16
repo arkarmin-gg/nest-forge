@@ -1,13 +1,13 @@
-import { Entity, Column, OneToMany, Index } from 'typeorm';
+import { SoftDeletableEntity } from 'src/common/entities';
+import { Column, Entity, Index, OneToMany } from 'typeorm';
 import { RolePermission } from './role-permission.entity';
-import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('roles')
 @Index('UQ_roles_name_active', ['name'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
-export class Role extends BaseEntity {
+export class Role extends SoftDeletableEntity {
   @Column()
   name!: string;
 

@@ -1,4 +1,3 @@
-import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsIn,
@@ -8,8 +7,9 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { LoginProvider } from '../entities/user.entity';
-import { IsPassword } from '../../../common/validators/is-password.validator';
+import { IsPassword } from 'src/common/validators';
+import { LoginProvider } from '../constants/login-provider.enum';
+import { ToBoolean } from 'src/common/decorators';
 
 export class CreateUserDto {
   @IsOptional()
@@ -30,21 +30,7 @@ export class CreateUserDto {
   phone!: string;
 
   @IsOptional()
-  @IsString({ message: 'Date of birth must be a string' })
-  dateOfBirth?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Gender must be a string' })
-  @IsIn(['male', 'female'], { message: 'Gender must be either male or female' })
-  gender?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => {
-    if (value === undefined || value === null) return undefined;
-    if (value === 'true' || value === '1' || value === true) return true;
-    if (value === 'false' || value === '0' || value === false) return false;
-    return undefined;
-  })
+  @ToBoolean()
   isBanned?: boolean;
 
   @IsOptional()

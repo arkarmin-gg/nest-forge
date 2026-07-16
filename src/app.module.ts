@@ -1,7 +1,6 @@
 import { createKeyv } from '@keyv/redis';
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
-import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -22,8 +21,6 @@ import { ActivityLogModule } from 'src/modules/log/activity-log.module';
 import { ActivityLogInterceptor } from 'src/modules/log/interceptors/activity-log.interceptor';
 import { SettingModule } from 'src/modules/setting/setting.module';
 import { UserModule } from 'src/modules/user/user.module';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { CommonModule } from './common/common.module';
 import { envValidationSchema } from './common/config/env.validation';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -34,17 +31,6 @@ import dataSource from './data-source';
     CommonModule,
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        prefix: configService.get('REDIS_PREFIX_KEY', 'nest_forge:'),
-        connection: {
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
-        },
-      }),
-      inject: [ConfigService],
-    }),
     NotificationModule,
     ThrottlerModule.forRoot({
       throttlers: [
@@ -96,9 +82,8 @@ import dataSource from './data-source';
     SettingModule,
     HealthModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [
-    AppService,
     {
       provide: APP_INTERCEPTOR,
       useClass: ActivityLogInterceptor,

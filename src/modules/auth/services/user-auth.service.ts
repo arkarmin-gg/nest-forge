@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -9,32 +10,29 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
-import * as appleSignin from 'apple-signin-auth';
 import { Request } from 'express';
-import { OAuth2Client } from 'google-auth-library';
-import { FileUploadService } from 'src/common/services/file-upload.service';
-import { nowUtc } from 'src/common/utils/date-time.util';
-import { comparePassword } from 'src/common/utils/password-hash.util';
-import { buildRequestContext } from 'src/common/utils/request-context.util';
-import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
+import { FileUploadService } from 'src/common/services';
+import { nowUtc } from 'src/common/utils';
+import { comparePassword } from 'src/common/utils';
+import { buildRequestContext } from 'src/common/utils';
+import { SMSPohService } from 'src/common/services';
 import {
   ACTIVITY_LOG_EVENT,
   ActivityLogEvent,
   LogStatus,
 } from 'src/modules/log';
 import { LogAction } from 'src/modules/log/api';
-import { LoginProvider, User, UserRegistrationStage } from 'src/modules/user';
-import { UserService } from 'src/modules/user/api';
+import type { User } from 'src/modules/user';
+import { LoginProvider, UserService } from 'src/modules/user/api';
 import { ChangePasswordDto } from '../dto/change-password.dto';
+import { OAuthLoginPayload } from '../dto/oauth-login-payload.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { UserAppleLoginDto } from '../dto/user-apple-login.dto';
-import { UserGoogleLoginDto } from '../dto/user-google-login.dto';
 import { UserLoginDto } from '../dto/user-login.dto';
-import { UserRegisterAccountSetupDto } from '../dto/user-register-account-setup.dto';
 import { UserRegisterOTPRequestDto } from '../dto/user-register-otp-request.dto';
 import { UserRegisterOTPVerifyDto } from '../dto/user-register-otp-verify.dto';
 import { UserRegisterPasswordSetupDto } from '../dto/user-register-password-setup.dto';
 import { AuthenticatedUser, JwtPayload } from '../interfaces/user.interface';
+import { RegistrationSessionService } from './registration-session.service';
 import { TokenService } from './token.service';
 
 @Injectable()
@@ -44,11 +42,12 @@ export class UserAuthService {
   constructor(
     private readonly userService: UserService,
     private readonly tokenService: TokenService,
-    private readonly smsPhoServiceUtils: SMSPhoServiceUtils,
+    private readonly smsPohService: SMSPohService,
     private readonly fileUploadService: FileUploadService,
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly registrationSessionService: RegistrationSessionService,
   ) {}
 
   async validateUserById(id: string): Promise<User | null> {
@@ -63,7 +62,7 @@ export class UserAuthService {
     };
 
     const accessToken = this.jwtService.sign(payload);
-    await this.tokenService.revokeAllUserTokens(user.id, false);
+    await this.tokenService.revokeAllUserTokens(user.id);
     const refreshToken = await this.tokenService.generateRefreshToken(
       user.id,
       'user',
@@ -95,7 +94,7 @@ export class UserAuthService {
         'JWT_REFRESH_EXPIRATION',
         2592000000,
       ),
-      user: { id: user.id, fcmToken: user.fcmToken },
+      user: { id: user.id },
     };
   }
 
@@ -161,139 +160,79 @@ export class UserAuthService {
       throw new UnauthorizedException('Your account has been banned');
     }
 
-    user.fcmToken = loginDto.fcmToken ?? user.fcmToken;
     user.lastLoginAt = nowUtc();
     await this.userService.saveEntity(user);
 
-    return this.completeUserLogin(user, request);
+    return await this.completeUserLogin(user, request);
   }
 
-  private async handleOAuthLogin(
-    provider: 'GOOGLE' | 'APPLE',
-    providerId: string,
-    email: string | undefined,
-    fullName: string | undefined,
-    fcmToken: string | undefined,
-    request: Request,
-  ) {
-    const idField = provider === 'GOOGLE' ? 'googleId' : 'appleId';
+  async handleOAuthLogin(payload: OAuthLoginPayload, request: Request) {
+    const { provider, providerId, email, fullName, phone } = payload;
 
-    let user = await this.userService.findByOAuth(provider, providerId, email);
+    let user: User | null = null;
+
+    if (provider === LoginProvider.GOOGLE) {
+      user = await this.userService.findByGoogleId(providerId);
+    }
+
+    if (provider === LoginProvider.APPLE) {
+      user = await this.userService.findByAppleId(providerId);
+    }
+
+    if (!user && email) {
+      user = await this.userService.findByEmail(email);
+    }
 
     if (!user) {
       user = await this.userService.createEntity({
-        [idField]: providerId,
         email,
-        fullName: fullName ?? undefined,
-        registrationStage: UserRegistrationStage.PASSWORD_SET,
-        fcmToken: fcmToken ?? null,
-        loginProvider: LoginProvider[provider],
-        lastLoginAt: nowUtc(),
+        fullName,
+        phone,
+        loginProvider: provider,
+        googleId: provider === LoginProvider.GOOGLE ? providerId : undefined,
+        appleId: provider === LoginProvider.APPLE ? providerId : undefined,
+        lastLoginAt: new Date(),
       });
 
-      return {
-        userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        currentUserRegistrationStage: user.registrationStage,
-        nextUserRegistrationStage: UserRegistrationStage.COMPLETED,
-        message: `${provider} OAuth successful and account setup required to complete the register process`,
+      this.eventEmitter.emit(
+        ACTIVITY_LOG_EVENT,
+        new ActivityLogEvent({
+          userId: user.id,
+          action: LogAction.LOGIN,
+          description: 'User OAuth logged in',
+          resourceType: 'Auth',
+          resourceId: user.id,
+          status: LogStatus.SUCCESS,
+          ...buildRequestContext(request),
+        }),
+      );
+    } else {
+      const updatePayload: Partial<User> = {
+        lastLoginAt: new Date(),
       };
+
+      if (provider === LoginProvider.GOOGLE && !user.googleId) {
+        updatePayload.googleId = providerId;
+      }
+
+      if (provider === LoginProvider.APPLE && !user.appleId) {
+        updatePayload.appleId = providerId;
+      }
+
+      user = await this.userService.update(user.id, updatePayload);
     }
 
-    if (user.isBanned) {
-      this.logger.warn(`Banned user with ID '${user.id}' attempted to login`);
-      throw new UnauthorizedException('Your account has been banned');
-    }
-
-    if (!user[idField as keyof User]) {
-      await this.userService.updateFields(user.id, { [idField]: providerId });
-    }
-
-    if (fcmToken) user.fcmToken = fcmToken;
-
-    if (user.registrationStage === UserRegistrationStage.PASSWORD_SET) {
-      await this.userService.saveEntity(user);
-      return {
-        userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        currentUserRegistrationStage: user.registrationStage,
-        nextUserRegistrationStage: UserRegistrationStage.COMPLETED,
-        message: `${provider} OAuth successful and account setup required to complete the register process`,
-      };
-    }
-
-    user.lastLoginAt = nowUtc();
-    await this.userService.saveEntity(user);
-
-    return this.completeUserLogin(user, request);
-  }
-
-  async userGoogleLogin(dto: UserGoogleLoginDto, request: Request) {
-    const { token, fcmToken } = dto;
-
-    const client = new OAuth2Client(
-      this.configService.get<string>('GOOGLE_CLIENT_ID'),
-    );
-    const ticket = await client
-      .verifyIdToken({
-        idToken: token,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
-      })
-      .catch(() => {
-        throw new UnauthorizedException('Invalid Google token');
-      });
-
-    const payload = ticket.getPayload();
-    if (!payload?.sub) throw new UnauthorizedException('Invalid Google token');
-
-    return this.handleOAuthLogin(
-      'GOOGLE',
-      payload.sub,
-      payload.email,
-      payload.name,
-      fcmToken,
-      request,
-    );
-  }
-
-  async userAppleLogin(dto: UserAppleLoginDto, request: Request) {
-    const { token, fcmToken } = dto;
-
-    const claims = await appleSignin
-      .verifyIdToken(token, {
-        audience: this.configService.get<string>('APPLE_CLIENT_ID'),
-        ignoreExpiration: false,
-      })
-      .catch(() => {
-        throw new UnauthorizedException('Invalid Apple token');
-      });
-
-    if (!claims?.sub) throw new UnauthorizedException('Invalid Apple token');
-
-    return this.handleOAuthLogin(
-      'APPLE',
-      claims.sub,
-      claims.email,
-      undefined,
-      fcmToken,
-      request,
-    );
+    return await this.completeUserLogin(user, request);
   }
 
   async userRegisterOTPRequest(dto: UserRegisterOTPRequestDto) {
-    const existing = await this.userService.findByPhoneAndStage(
-      dto.phone,
-      UserRegistrationStage.COMPLETED,
-    );
+    const isRegistered = await this.userService.isPhoneRegistered(dto.phone);
 
-    if (existing) {
-      this.logger.warn(`User with phone '${dto.phone}' already exists`);
-      throw new UnauthorizedException('User already exists');
+    if (isRegistered) {
+      throw new ConflictException('Phone number is already registered.');
     }
 
-    const { success, requestId } = await this.smsPhoServiceUtils.sendOTP({
+    const { success, requestId } = await this.smsPohService.sendOTP({
       to: dto.phone,
       message:
         "[{brand}] Dear customer, your OTP code is {code} for register. It'll expire in 30 minutes.",
@@ -305,146 +244,76 @@ export class UserAuthService {
       throw new InternalServerErrorException('Failed to send OTP Verification');
     }
 
+    await this.registrationSessionService.create(dto.phone, {
+      fullName: dto.fullName,
+      requestId,
+    });
+
     return { requestId, message: 'OTP verification code sent to your phone' };
   }
 
   async userRegisterOTPVerify(dto: UserRegisterOTPVerifyDto) {
-    const user = await this.userService.findByPhone(dto.phone);
+    const isRegistered = await this.userService.isPhoneRegistered(dto.phone);
 
-    if (user) {
-      if (user.registrationStage === UserRegistrationStage.OTP_VERIFIED) {
-        return {
-          userId: user.id,
-          currentUserRegistrationStage: user.registrationStage,
-          nextUserRegistrationStage: UserRegistrationStage.PASSWORD_SET,
-          message: 'User is already OTP_VERIFY',
-        };
-      }
-
-      if (user.registrationStage === UserRegistrationStage.PASSWORD_SET) {
-        return {
-          userId: user.id,
-          currentUserRegistrationStage: user.registrationStage,
-          nextUserRegistrationStage: UserRegistrationStage.COMPLETED,
-          message: 'User is already PASSWORD_SETUP',
-        };
-      }
-
-      if (user.registrationStage === UserRegistrationStage.COMPLETED) {
-        this.logger.warn(`User with phone '${dto.phone}' already exists`);
-        throw new UnauthorizedException(
-          'User is already ACCOUNT_SETUP and cannot be registered again',
-        );
-      }
+    if (isRegistered) {
+      throw new ConflictException('Phone number is already registered.');
     }
 
-    const { success } = await this.smsPhoServiceUtils.verifyOTP({
+    const session = await this.registrationSessionService.get(dto.phone);
+
+    this.registrationSessionService.validateRequestId(session, dto.requestId);
+
+    if (session.otpVerified) {
+      return {
+        message: 'OTP verification already completed',
+      };
+    }
+
+    await this.smsPohService.verifyOTP({
       requestId: dto.requestId,
       code: dto.otp,
     });
 
-    if (success) {
-      const newUser = await this.userService.createEntity({
-        fcmToken: dto.fcmToken,
-        registrationStage: UserRegistrationStage.OTP_VERIFIED,
-        phone: dto.phone,
-      });
-      return {
-        userId: newUser.id,
-        currentUserRegistrationStage: newUser.registrationStage,
-        nextUserRegistrationStage: UserRegistrationStage.PASSWORD_SET,
-        message: 'OTP verification succeeded',
-      };
-    }
-
-    throw new BadRequestException('Invalid OTP');
-  }
-
-  async userRegisterPasswordSetup(dto: UserRegisterPasswordSetupDto) {
-    const user = await this.userService.findByIdAndStage(
-      dto.userId,
-      UserRegistrationStage.OTP_VERIFIED,
-    );
-
-    if (!user) {
-      this.logger.warn(`User with ID '${dto.userId}' not found`);
-      throw new UnauthorizedException('User not found');
-    }
-
-    if (dto.password !== dto.confirmPassword) {
-      throw new BadRequestException('Passwords do not match');
-    }
-
-    user.password = dto.password;
-    user.registrationStage = UserRegistrationStage.PASSWORD_SET;
-    await this.userService.saveEntity(user);
+    await this.registrationSessionService.markVerified(dto.phone);
 
     return {
-      userId: user.id,
-      currentUserRegistrationStage: user.registrationStage,
-      nextUserRegistrationStage: UserRegistrationStage.COMPLETED,
-      message: 'Password setup succeeded',
+      message: 'OTP verification completed',
     };
   }
 
-  async userRegisterAccountSetup(
-    dto: UserRegisterAccountSetupDto,
-    file: Express.Multer.File | undefined,
+  async userRegisterPasswordSetup(
+    dto: UserRegisterPasswordSetupDto,
     request: Request,
   ) {
-    const user = await this.userService.findByIdAndStage(
-      dto.userId,
-      UserRegistrationStage.PASSWORD_SET,
-    );
-
-    if (!user) {
-      this.logger.warn(`User with ID '${dto.userId}' not found`);
-      throw new UnauthorizedException('User not found');
+    if (dto.confirmPassword !== dto.password) {
+      throw new BadRequestException('Passwords do not match');
     }
 
-    const existingProfileImageUrl = user.profileImageUrl || '';
-    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
-      file,
-      bodyUrl: dto.profileImageUrl,
-      existingUrl: existingProfileImageUrl,
-      path: 'users/profile',
+    const isRegistered = await this.userService.isPhoneRegistered(dto.phone);
+
+    if (isRegistered) {
+      throw new ConflictException('Phone number is already registered.');
+    }
+
+    const session = await this.registrationSessionService.get(dto.phone);
+
+    this.registrationSessionService.requireOtpVerified(session);
+
+    const user = await this.userService.createEntity({
+      phone: dto.phone,
+      fullName: session.fullName,
+      password: dto.password,
+      loginProvider: LoginProvider.SMS,
+      lastLoginAt: nowUtc(),
     });
 
-    user.email = dto.email ?? user.email;
-    user.fullName = dto.fullName;
-    user.dateOfBirth = dto.dateOfBirth;
-    user.gender = dto.gender ?? user.gender;
-    user.preferLanguage = dto.preferLanguage ?? user.preferLanguage;
-    user.profileImageUrl = newProfileImageUrl;
-    user.registrationStage = UserRegistrationStage.COMPLETED;
-    user.fcmToken = dto.fcmToken ?? user.fcmToken;
-    await this.userService.saveEntity(user);
-
-    await this.fileUploadService.replace(
-      newProfileImageUrl,
-      existingProfileImageUrl,
-    );
-
-    this.eventEmitter.emit(
-      ACTIVITY_LOG_EVENT,
-      new ActivityLogEvent({
-        userId: user.id,
-        action: LogAction.REGISTER,
-        description: 'User registration completed',
-        resourceType: 'Auth',
-        resourceId: user.id,
-        status: LogStatus.SUCCESS,
-        ...buildRequestContext(request),
-      }),
-    );
+    await this.registrationSessionService.delete(dto.phone);
 
     const loginData = await this.completeUserLogin(user, request);
 
     return {
-      userId: user.id,
-      currentUserRegistrationStage: user.registrationStage,
-      loginData,
-      message: 'Account setup succeeded',
+      ...loginData,
+      message: 'User registered successfully',
     };
   }
 
@@ -469,14 +338,14 @@ export class UserAuthService {
     const newProfileImageUrl = await this.fileUploadService.resolveUrl({
       file,
       bodyUrl: dto.profileImageUrl,
-      existingUrl: user.profileImageUrl || '',
+      existingUrl: user.profileImageKey || '',
       path: 'users/profile',
     });
 
     const updatedUser = await this.userService.preloadEntity({
       id: userId,
       ...updateProfileDto,
-      profileImageUrl: newProfileImageUrl,
+      profileImageKey: newProfileImageUrl,
     });
 
     if (!updatedUser) {
@@ -489,7 +358,7 @@ export class UserAuthService {
 
     await this.fileUploadService.replace(
       newProfileImageUrl,
-      user.profileImageUrl || '',
+      user.profileImageKey || '',
     );
 
     this.logger.log(`User with ID '${user.id}' profile updated successfully`);
@@ -536,7 +405,7 @@ export class UserAuthService {
     }
 
     await this.tokenService.revokeAllUserTokens(userId);
-    await this.fileUploadService.remove(user.profileImageUrl || '');
+    await this.fileUploadService.remove(user.profileImageKey || '');
 
     this.logger.log(
       `User with ID '${user.id}' account soft deleted successfully`,

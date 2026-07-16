@@ -3,9 +3,9 @@ export interface AuditLogMetadata {
   newValue?: Record<string, unknown>;
 }
 
-export const AUDIT_LOG_METADATA = '__auditLogMetadata';
+const AUDIT_LOG_METADATA = '__auditLogMetadata';
 
-export type AuditableResult = object & {
+type AuditableResult = object & {
   [AUDIT_LOG_METADATA]?: AuditLogMetadata;
 };
 

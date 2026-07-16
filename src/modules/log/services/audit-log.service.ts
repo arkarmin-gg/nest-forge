@@ -16,7 +16,7 @@ import {
   parseRangeEnd,
   subtractDays,
   LOG_RETENTION_DAYS,
-} from 'src/common/utils/date-time.util';
+} from 'src/common/utils';
 
 const VALID_SORT_FIELDS: (keyof AuditLog)[] = [
   'createdAt',
@@ -106,7 +106,7 @@ export class AuditLogService {
     await this.auditLogRepository
       .createQueryBuilder()
       .delete()
-      .where('"createdAt" < :cutoffDate', { cutoffDate })
+      .where('"created_at" < :cutoffDate', { cutoffDate })
       .execute();
   }
 }

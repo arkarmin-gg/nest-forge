@@ -9,7 +9,7 @@ import {
   PERMISSIONS_KEY,
   PermissionRequirement,
 } from '../decorators/permissions.decorator';
-import { ActionType } from '../entities/permission.entity';
+import { ActionType } from '../constants/action-type.enum';
 import type { AuthenticatedUser, RequestWithUser } from 'src/modules/auth/api';
 
 @Injectable()

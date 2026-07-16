@@ -7,7 +7,7 @@ import {
   IsBoolean,
   IsNumber,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { ToBoolean, ToNumber } from 'src/common/decorators';
 
 export class CreateSMTPDto {
   @IsString({ message: 'SMTP host must be a string' })
@@ -16,11 +16,11 @@ export class CreateSMTPDto {
   smtpHost!: string;
 
   @IsNumber({}, { message: 'SMTP port must be a valid port number' })
-  @Transform(({ value }) => parseInt(value))
+  @ToNumber()
   smtpPort!: number;
 
   @IsBoolean({ message: 'SMTP secure must be a boolean value' })
-  @Transform(({ value }) => value === 'true' || value === true)
+  @ToBoolean()
   smtpSecure!: boolean;
 
   @IsString({ message: 'SMTP username must be a string' })
@@ -44,6 +44,6 @@ export class CreateSMTPDto {
   smtpFromName!: string;
 
   @IsBoolean({ message: 'SMTP enabled must be a boolean value' })
-  @Transform(({ value }) => value === 'true' || value === true)
+  @ToBoolean()
   smtpEnabled!: boolean;
 }

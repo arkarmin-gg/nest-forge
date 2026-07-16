@@ -14,8 +14,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
-import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { ResolvePresignedUrls } from 'src/common/decorators';
+import { imageInterceptorOptions } from 'src/common/config';
 import { LogAction, LogActivity } from 'src/modules/log/api';
 import {
   PermissionModule,
@@ -25,6 +25,7 @@ import {
 import {
   CreateUserDto,
   FilterUserDto,
+  LoginProvider,
   UpdateUserDto,
   UserService,
 } from 'src/modules/user/api';
@@ -44,18 +45,19 @@ export class UserController {
     { module: PermissionModule.APPLICATION_USER, permission: 'create' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'create' },
   )
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
+  @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() createUserDto: CreateUserDto,
   ) {
-    return this.userService.create(createUserDto, file);
+    return this.userService.create(
+      { ...createUserDto, loginProvider: LoginProvider.SMS },
+      file,
+    );
   }
 
   @Get()
-  @ResolvePresignedUrls('profileImageUrl')
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'read' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'read' },
@@ -65,7 +67,7 @@ export class UserController {
   }
 
   @Get(':id')
-  @ResolvePresignedUrls('profileImageUrl')
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'read' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'read' },
@@ -84,9 +86,7 @@ export class UserController {
     { module: PermissionModule.APPLICATION_USER, permission: 'update' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'update' },
   )
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
+  @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   async update(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: Express.Multer.File,

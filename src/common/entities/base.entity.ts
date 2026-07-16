@@ -1,10 +1,4 @@
-import {
-  CreateDateColumn,
-  DeleteDateColumn,
-  Index,
-  PrimaryColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { CreateDateColumn, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 export abstract class BaseEntity {
   @PrimaryColumn({
@@ -18,8 +12,4 @@ export abstract class BaseEntity {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
-
-  @Index()
-  @DeleteDateColumn({ type: 'timestamptz' })
-  deletedAt?: Date;
 }

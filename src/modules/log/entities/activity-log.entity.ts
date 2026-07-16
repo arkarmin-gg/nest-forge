@@ -22,10 +22,10 @@ export class ActivityLog {
   userId!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'enum', enum: LogAction })
+  @Column({ type: 'varchar' })
   action!: LogAction;
 
   @Column({ type: 'text' })
@@ -55,7 +55,7 @@ export class ActivityLog {
   @Column({ nullable: true })
   location!: string;
 
-  @Column({ type: 'enum', enum: LogStatus, default: LogStatus.SUCCESS })
+  @Column({ type: 'varchar', default: LogStatus.SUCCESS })
   status!: LogStatus;
 
   @Column({ type: 'jsonb', nullable: true })

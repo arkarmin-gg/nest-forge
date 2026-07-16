@@ -1,4 +1,4 @@
-import { AuthenticatedUser } from '../auth/interfaces/user.interface';
+import { AuthenticatedUser } from 'src/modules/auth/interfaces/user.interface';
 
 declare global {
   namespace Express {

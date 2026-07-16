@@ -19,10 +19,7 @@ export class SettingService {
   ): Promise<SMTPResponseDto> {
     let oldSettings: Record<string, unknown> = {};
     try {
-      oldSettings = { ...(await this.getSMTPSettings()) } as Record<
-        string,
-        unknown
-      >;
+      oldSettings = { ...(await this.getSMTPSettings()) };
     } catch {
       // No existing settings — first-time creation, oldValue stays empty
     }

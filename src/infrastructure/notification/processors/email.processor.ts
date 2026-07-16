@@ -1,42 +1,34 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { EmailServiceUtils } from 'src/common/utils/email-service.utils';
+import { EmailService } from 'src/common/services';
 import {
   EMAIL_NOTIFICATION_QUEUE,
   EmailJobName,
 } from '../constants/notification.constants';
-import {
-  SendForgotPasswordResetCodePayload,
-  SendTwoFactorCodePayload,
-} from '../interfaces/notification-jobs.interface';
+import { SendForgotPasswordResetCodePayload } from '../interfaces/notification-jobs.interface';
 
+@Injectable()
 @Processor(EMAIL_NOTIFICATION_QUEUE)
 export class EmailProcessor extends WorkerHost {
   private readonly logger = new Logger(EmailProcessor.name);
 
-  constructor(private readonly emailServiceUtils: EmailServiceUtils) {
+  constructor(private readonly emailService: EmailService) {
     super();
   }
 
-  async process(job: Job): Promise<void> {
-    this.logger.log(`Processing email job: ${job.name} (id: ${job.id})`);
+  async process(
+    job: Job<SendForgotPasswordResetCodePayload, void, EmailJobName>,
+  ): Promise<void> {
+    this.logger.log(`Processing email job: ${job.name}`);
 
-    switch (job.name as EmailJobName) {
-      case EmailJobName.SEND_TWO_FACTOR_CODE:
-        await this.emailServiceUtils.sendTwoFactorCode(
-          job.data as SendTwoFactorCodePayload,
-        );
-        break;
-
+    switch (job.name) {
       case EmailJobName.SEND_FORGOT_PASSWORD_RESET_CODE:
-        await this.emailServiceUtils.sendForgotPasswordResetCode(
-          job.data as SendForgotPasswordResetCodePayload,
-        );
+        await this.emailService.sendForgotPasswordResetCode(job.data);
         break;
 
       default:
-        this.logger.warn(`Unknown email job: ${job.name}`);
+        throw new Error(`Unknown email job name: ${String(job.name)}`);
     }
   }
 }

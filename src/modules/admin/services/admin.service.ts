@@ -5,11 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FileUploadService } from 'src/common/services/file-upload.service';
-import {
-  parseRangeEnd,
-  parseRangeStart,
-} from 'src/common/utils/date-time.util';
+import { FileUploadService } from 'src/common/services';
+import { parseRangeEnd, parseRangeStart } from 'src/common/utils';
 import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import { RoleService } from 'src/modules/role/api';
 import { DeepPartial, Repository } from 'typeorm';
@@ -61,7 +58,7 @@ export class AdminService {
 
     const admin = this.adminRepository.create({
       ...createAdminDto,
-      profileImageUrl,
+      profileImageKey: profileImageUrl,
     });
     const savedAdmin = await this.adminRepository.save(admin);
     this.logger.log(`Admin created with ID: ${savedAdmin.id}`);
@@ -169,14 +166,14 @@ export class AdminService {
     const newProfileImageUrl = await this.fileUploadService.resolveUrl({
       file,
       bodyUrl: dto.profileImageUrl,
-      existingUrl: existingAdmin.profileImageUrl || '',
+      existingUrl: existingAdmin.profileImageKey || '',
       path: 'admins/profile',
     });
 
     const updatedAdmin = await this.adminRepository.preload({
       id,
       ...updateAdminDto,
-      profileImageUrl: newProfileImageUrl,
+      profileImageKey: newProfileImageUrl,
     });
 
     if (!updatedAdmin) {
@@ -196,7 +193,7 @@ export class AdminService {
 
     await this.fileUploadService.replace(
       newProfileImageUrl,
-      existingAdmin.profileImageUrl || '',
+      existingAdmin.profileImageKey || '',
     );
     this.logger.log(`Admin updated with ID: ${savedAdmin.id}`);
 
@@ -211,7 +208,7 @@ export class AdminService {
       throw new NotFoundException(`Admin with ID '${id}' not found`);
     }
 
-    await this.fileUploadService.remove(existingAdmin.profileImageUrl || '');
+    await this.fileUploadService.remove(existingAdmin.profileImageKey || '');
 
     await this.adminRepository.softRemove(existingAdmin);
     this.logger.log(`Admin with ID '${id}' has been successfully soft deleted`);

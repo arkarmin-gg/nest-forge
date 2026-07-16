@@ -8,8 +8,8 @@ import {
   isExpired,
   nowUtc,
   REFRESH_TOKEN_TTL_DAYS,
-} from 'src/common/utils/date-time.util';
-import { sha256Hex } from 'src/common/utils/hash.util';
+} from 'src/common/utils';
+import { sha256Hex } from 'src/common/utils';
 import { AdminService } from 'src/modules/admin/api';
 import { UserService } from 'src/modules/user/api';
 import { Repository } from 'typeorm';
@@ -135,24 +135,13 @@ export class TokenService {
     };
   }
 
-  async revokeAllUserTokens(
-    userId: string,
-    clearFcmToken: boolean = true,
-  ): Promise<void> {
+  async revokeAllUserTokens(userId: string): Promise<void> {
     await this.refreshTokenRepository.update(
       { userId, isRevoked: false },
       { isRevoked: true },
     );
 
-    const updateData: { lastLogoutAt: Date; fcmToken?: string } = {
-      lastLogoutAt: nowUtc(),
-    };
-
-    if (clearFcmToken) {
-      updateData.fcmToken = '';
-    }
-
-    await this.userService.updateFields(userId, updateData);
+    await this.userService.updateFields(userId, { lastLogoutAt: nowUtc() });
   }
 
   async revokeAllAdminTokens(adminId: string): Promise<void> {

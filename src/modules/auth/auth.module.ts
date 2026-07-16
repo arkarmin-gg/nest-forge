@@ -14,8 +14,8 @@ import { SubjectGuard } from './guards/subject.guard';
 import { AdminAuthService } from './services/admin-auth.service';
 import { AuthProfileService } from './services/auth-profile.service';
 import { PasswordResetService } from './services/password-reset.service';
+import { RegistrationSessionService } from './services/registration-session.service';
 import { TokenService } from './services/token.service';
-import { TwoFactorService } from './services/two-factor.service';
 import { UserAuthService } from './services/user-auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
@@ -44,7 +44,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AdminAuthService,
     AuthProfileService,
     PasswordResetService,
-    TwoFactorService,
+    RegistrationSessionService,
     JwtStrategy,
     JwtAuthGuard,
     ResourceOwnershipGuard,
@@ -57,7 +57,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AdminAuthService,
     AuthProfileService,
     PasswordResetService,
-    TwoFactorService,
+    RegistrationSessionService,
     JwtAuthGuard,
     ResourceOwnershipGuard,
     SubjectGuard,

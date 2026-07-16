@@ -9,7 +9,7 @@ import { Expose } from 'class-transformer';
  * unless it is explicitly added here.
  *
  * Deliberately omitted (internal / admin-only): password, isBanned,
- * registrationStage, fcmToken, googleId, appleId, loginProvider,
+ * googleId, appleId, loginProvider,
  * lastLoginAt, lastLogoutAt, deletedAt.
  */
 export class UserAppResponseDto {
@@ -27,15 +27,6 @@ export class UserAppResponseDto {
 
   @Expose()
   profileImageUrl!: string;
-
-  @Expose()
-  dateOfBirth!: string;
-
-  @Expose()
-  gender?: string;
-
-  @Expose()
-  preferLanguage?: string;
 
   @Expose()
   createdAt!: Date;

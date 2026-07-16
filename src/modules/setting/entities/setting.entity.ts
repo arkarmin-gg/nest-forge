@@ -1,12 +1,12 @@
-import { Entity, Column, Index } from 'typeorm';
-import { BaseEntity } from 'src/common/entities/base.entity';
+import { SoftDeletableEntity } from 'src/common/entities';
+import { Column, Entity, Index } from 'typeorm';
 
 @Entity('settings')
 @Index('UQ_settings_key_active', ['key'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
-export class Setting extends BaseEntity {
+export class Setting extends SoftDeletableEntity {
   @Column({ nullable: false })
   key!: string;
 

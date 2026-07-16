@@ -16,6 +16,7 @@ import {
 import { CreateSMTPDto, SettingService } from 'src/modules/setting/api';
 
 @Controller({ path: 'admin/settings', version: '1' })
+@UseGuards(PermissionsGuard)
 export class SettingController {
   constructor(private readonly settingService: SettingService) {}
 
@@ -25,7 +26,6 @@ export class SettingController {
     description: 'Admin updated SMTP settings',
     resourceType: 'Setting',
   })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(
     { module: PermissionModule.SETTING, permission: 'update' },
     { module: PermissionModule.SETTING_SMTP, permission: 'update' },

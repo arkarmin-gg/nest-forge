@@ -37,25 +37,31 @@ export class SettingSeeder {
       },
       {
         key: 'smtp_username',
-        value: '',
+        value: this.configService.get<string>(
+          'SMTP_USERNAME',
+          'noreply@example.com',
+        ),
         description: 'Optional SMTP authentication username.',
       },
       {
         key: 'smtp_password',
-        value: '',
+        value: this.configService.get<string>(
+          'SMTP_USER_PASSWORD',
+          'your_password',
+        ),
         description: 'Optional SMTP authentication password.',
       },
       {
         key: 'smtp_from_email',
-        value: 'noreply@example.com',
+        value: this.configService.get<string>(
+          'SMTP_USERNAME',
+          'noreply@example.com',
+        ),
         description: 'Default sender email address for outgoing emails.',
       },
       {
         key: 'smtp_from_name',
-        value: this.configService.get<string>(
-          'SMTP_FROM_NAME',
-          'NestJS TypeORM API Starter',
-        ),
+        value: this.configService.get<string>('SMTP_FROM_NAME', 'nest-forge'),
         description: 'Default sender display name for outgoing emails.',
       },
       {

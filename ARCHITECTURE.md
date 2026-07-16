@@ -28,6 +28,7 @@
 19. [Best Practices & Rules](#19-best-practices--rules)
 20. [Common Mistakes to Avoid](#20-common-mistakes-to-avoid)
 21. [Adding a New Module — Step-by-Step](#21-adding-a-new-module--step-by-step)
+22. [Quality Gates](#22-quality-gates)
 
 ---
 
@@ -141,19 +142,18 @@ nest-forge/
 │   │   └── notification/            # BullMQ email/SMS queues
 │   │
 │   ├── common/                      ← Shared Cross-Cutting Concerns
-│   │   ├── config/                  # Env validation, logger config
+│   │   ├── config/                  # Env validation, logger config, upload (Multer) config
 │   │   ├── decorators/              # @RequestTimeout, @ResolvePresignedUrls
 │   │   ├── dto/                     # PaginationFilterDto
-│   │   ├── entities/                # BaseEntity, AuditEntity
+│   │   ├── entities/                # BaseEntity, SoftDeletableEntity
 │   │   ├── filters/                 # Exception filters
 │   │   ├── interceptors/            # Response, Timeout, PresignedUrl
 │   │   ├── interfaces/              # ApiResponse<T>
 │   │   ├── middleware/              # RequestId middleware
 │   │   ├── pipes/                   # TrimPipe (global string trimming)
-│   │   ├── services/                # FileUploadService, StartupService
-│   │   ├── transaction/             # @Transactional decorator
-│   │   ├── utils/                   # S3, email, SMS, password, date utils
-│   │   └── validators/              # Custom validators (NRC, password)
+│   │   ├── services/                # S3ClientService, EmailService, FcmService, SMSPohService, FileUploadService, StartupService
+│   │   ├── utils/                   # Stateless helpers — date/time, hash, password, request-context, response, S3 URL parsing
+│   │   └── validators/              # Custom validators (password)
 │   │
 │   ├── seeders/                     # Database seeding scripts
 │   ├── types/                       # TypeScript ambient declarations
@@ -257,6 +257,13 @@ Each module contains:
 
 Includes: filters, interceptors, base entities, shared DTOs, utility functions.
 
+**Conventions:**
+
+- Every subfolder exports through its own `index.ts` barrel. Import from the barrel (`src/common/utils`), never from a file inside it — this keeps future renames/moves inside `common/` a one-line barrel change instead of a repo-wide find/replace.
+- `utils/` holds stateless pure functions only, named `*.util.ts` (e.g. `date-time.util.ts`, `s3-url.util.ts`).
+- `services/` holds `@Injectable()` classes, named `*.service.ts` (e.g. `s3-client.service.ts`, `email.service.ts`). If it has external dependencies (DB, S3, SMTP, external APIs) or DI-injected state, it's a service, not a util.
+- Config objects/schemas (Multer options, env validation, logger setup) go in `config/`, named `*.config.ts`.
+
 ---
 
 ## 5. Module Structure — The Golden Template
@@ -265,16 +272,16 @@ Every new domain module **must** follow this exact structure:
 
 ```
 modules/
-└── product/                         ← Your new module
+└── article/                         ← Your new module
     ├── dto/
-    │   ├── create-product.dto.ts
-    │   ├── update-product.dto.ts
-    │   └── filter-product.dto.ts
+    │   ├── create-article.dto.ts
+    │   ├── update-article.dto.ts
+    │   └── filter-article.dto.ts
     ├── entities/
-    │   └── product.entity.ts
+    │   └── article.entity.ts
     ├── services/
-    │   └── product.service.ts
-    ├── product.module.ts
+    │   └── article.service.ts
+    ├── article.module.ts
     ├── index.ts                     ← Full domain public API (for other modules)
     └── api.ts                       ← HTTP surface (for controllers only)
 ```
@@ -292,24 +299,24 @@ Every module exposes two barrel files with a **strict no-overlap rule**: if a sy
 **`index.ts` — Module wiring and domain types**
 
 ```typescript
-// modules/product/index.ts
-export { ProductModule } from './product.module'; // ← module class, for app.module.ts
-export { Product } from './entities/product.entity'; // ← entity, for domain services that need the type
-export { ProductCreatedEvent } from './events/product-created.event'; // ← events
-// No ProductService — services live in api.ts
+// modules/article/index.ts
+export { ArticleModule } from './article.module'; // ← module class, for app.module.ts
+export { Article } from './entities/article.entity'; // ← entity, for domain services that need the type
+export { ArticleCreatedEvent } from './events/article-created.event'; // ← events
+// No ArticleService — services live in api.ts
 // No DTOs — DTOs live in api.ts
 ```
 
 **`api.ts` — Services, DTOs, and route decorators**
 
 ```typescript
-// modules/product/api.ts
-export { ProductService } from './services/product.service'; // ← service, for both controllers and domain services
-export { CreateProductDto } from './dto/create-product.dto';
-export { UpdateProductDto } from './dto/update-product.dto';
-export { FilterProductDto } from './dto/filter-product.dto';
-// No ProductModule — controllers don't register modules
-// No Product entity — controllers never handle raw entities
+// modules/article/api.ts
+export { ArticleService } from './services/article.service'; // ← service, for both controllers and domain services
+export { CreateArticleDto } from './dto/create-article.dto';
+export { UpdateArticleDto } from './dto/update-article.dto';
+export { FilterArticleDto } from './dto/filter-article.dto';
+// No ArticleModule — controllers don't register modules
+// No Article entity — controllers never handle raw entities
 // No events — domain services import those from index.ts
 ```
 
@@ -317,26 +324,26 @@ export { FilterProductDto } from './dto/filter-product.dto';
 
 ```typescript
 // ✅ Controller importing — always use api.ts
-// src/api/v1/product/product.controller.ts
-import { ProductService, CreateProductDto } from 'src/modules/product/api';
+// src/api/v1/article/article.controller.ts
+import { ArticleService, CreateArticleDto } from 'src/modules/article/api';
 
 // ✅ Domain service calling another module's service — use api.ts (services live there)
-// src/modules/order/services/order.service.ts
-import { ProductService } from 'src/modules/product/api';
+// src/modules/workflow/services/workflow.service.ts
+import { ArticleService } from 'src/modules/article/api';
 
 // ✅ Domain service needing an entity type or event — use index.ts
-// src/modules/order/services/order.service.ts
-import { Product } from 'src/modules/product';
-import { ProductCreatedEvent } from 'src/modules/product';
+// src/modules/workflow/services/workflow.service.ts
+import { Article } from 'src/modules/article';
+import { ArticleCreatedEvent } from 'src/modules/article';
 
 // ❌ WRONG — deep import bypasses module boundary
-import { ProductService } from 'src/modules/product/services/product.service';
+import { ArticleService } from 'src/modules/article/services/article.service';
 
 // ❌ WRONG — controller importing from index.ts (no services or DTOs there)
-import { Product, ProductModule } from 'src/modules/product';
+import { Article, ArticleModule } from 'src/modules/article';
 
 // ❌ WRONG — importing a service from index.ts (it no longer lives there)
-import { ProductService } from 'src/modules/product';
+import { ArticleService } from 'src/modules/article';
 ```
 
 The no-overlap rule means every symbol has exactly one canonical import path. There is no need to guess which barrel to check.
@@ -518,7 +525,7 @@ return plainToInstance(UserAppResponseDto, user, {
 The `ResponseInterceptor` wraps return values automatically. But when you need manual control:
 
 ```typescript
-import { ResponseUtil } from 'src/common/utils/response.util';
+import { ResponseUtil } from 'src/common/utils';
 
 // In a service or when bypassing the interceptor
 return ResponseUtil.success(data, 'Created successfully');
@@ -606,7 +613,7 @@ The system has two distinct authenticated subjects. **Always check `subjectType`
 | --------------- | ------------------------ | ------------------------ |
 | `subjectType`   | `'USER'`                 | `'ADMIN'`                |
 | Identifier      | `userId`                 | `adminId`                |
-| Login method    | Phone + Password / OAuth | Email + Password (+ 2FA) |
+| Login method    | Phone + Password / OAuth | Email + Password         |
 | Has roles       | No                       | Yes                      |
 | Has permissions | No                       | Yes                      |
 
@@ -661,10 +668,7 @@ Every entity **must** extend `BaseEntity`. It is an **abstract** class (no `@Ent
 ```typescript
 // src/common/entities/base.entity.ts
 export abstract class BaseEntity {
-  @PrimaryColumn({
-    type: 'uuid',
-    default: () => 'gen_random_uuid()',
-  })
+  @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
@@ -679,15 +683,15 @@ export abstract class BaseEntity {
 }
 ```
 
-For append-only tables that must **not** be soft-deletable (the log tables), extend `AuditEntity` instead (`src/common/entities/audit.entity.ts`) — same `id`/`createdAt`/`updatedAt`, but no `deletedAt`.
+For append-only tables that must **not** be soft-deletable (the log tables), extend `BaseEntity` instead (`src/common/entities/base.entity.ts`) — same `id`/`createdAt`/`updatedAt`, but no `deletedAt`.
 
 ### Creating an Entity
 
 ```typescript
-import { BaseEntity } from 'src/common/entities/base.entity';
+import { BaseEntity } from 'src/common/entities';
 
-@Entity('products')
-export class Product extends BaseEntity {
+@Entity('articles')
+export class Article extends BaseEntity {
   @Column({ length: 255 })
   name: string;
 
@@ -742,13 +746,45 @@ export class User extends BaseEntity {
 
 This lets deleted rows hold stale values while active rows stay unique. The existence pre-checks in services already ignore soft-deleted rows (TypeORM's default), so a reused value creates a fresh record.
 
+### Enum-Like Columns — `varchar` + `CHECK`, Never Native `enum`
+
+**Never** declare an enum-like column as a native database enum (`@Column({ type: 'enum', enum: X })`). Always use `varchar`, typed in TypeScript by an `enum`/`const ... as const` object, backed by a migration `CHECK` constraint (see ADR-0009). A native DB enum makes adding/renaming a value an awkward `ALTER TYPE` migration and creates a second source of truth that can drift from the TS enum.
+
+```typescript
+// src/modules/otp/constants/otp-status.enum.ts — the source of truth
+export enum OtpStatus {
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  EXPIRED = 'EXPIRED',
+  USED = 'USED',
+}
+
+// DTO — validates against the same enum
+export class FilterOtpDto {
+  @IsOptional()
+  @IsEnum(OtpStatus)
+  status?: OtpStatus;
+}
+
+// entity — varchar, typed by the enum, NOT type: 'enum'
+@Column({ type: 'varchar', default: OtpStatus.PENDING })
+status!: OtpStatus;
+
+// migration — CHECK mirrors the enum's values exactly
+await queryRunner.query(
+  `ALTER TABLE "otp_records" ADD CONSTRAINT "CK_otp_records_status" CHECK ("status" IN ('PENDING', 'VERIFIED', 'EXPIRED', 'USED'))`,
+);
+```
+
+Size the `varchar` length to comfortably fit the longest current value — there is no fixed universal width. Adding or renaming a value means updating the TS enum **and** writing a migration that drops and re-adds the `CHECK` constraint with the new value list, in the same PR.
+
 ### Migrations — Never Use `synchronize: true`
 
 `synchronize: true` is **disabled** in production. Always generate migrations:
 
 ```bash
 # After changing an entity — provide the output path (TypeORM v0.3 syntax):
-npm run migration:generate src/infrastructure/database/migrations/AddProductTable
+npm run migration:generate src/infrastructure/database/migrations/AddArticleTable
 
 # Apply migrations:
 npm run migration:run
@@ -852,7 +888,7 @@ The interceptor automatically logs `LogStatus.SUCCESS` on completion and `LogSta
 
 ```typescript
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { buildRequestContext } from 'src/common/utils/request-context.util';
+import { buildRequestContext } from 'src/common/utils';
 import {
   ACTIVITY_LOG_EVENT,
   ActivityLogEvent,
@@ -933,17 +969,17 @@ Both `ActivityLogService` and `AuditLogService` run a scheduled purge at 2 AM da
 import { Logger } from '@nestjs/common';
 
 @Injectable()
-export class ProductService {
-  private readonly logger = new Logger(ProductService.name);
+export class ArticleService {
+  private readonly logger = new Logger(ArticleService.name);
 
-  async create(dto: CreateProductDto) {
-    this.logger.log(`Creating product: ${dto.name}`);
+  async create(dto: CreateArticleDto) {
+    this.logger.log(`Creating article: ${dto.name}`);
     try {
-      const product = await this.productRepository.save(dto);
-      this.logger.log(`Product created: ${product.id}`);
-      return product;
+      const article = await this.articleRepository.save(dto);
+      this.logger.log(`Article created: ${article.id}`);
+      return article;
     } catch (error) {
-      this.logger.error('Failed to create product', error.stack);
+      this.logger.error('Failed to create article', error.stack);
       throw error;
     }
   }
@@ -960,13 +996,13 @@ Inject and use wherever file operations are needed:
 
 ```typescript
 @Injectable()
-export class ProductService {
+export class ArticleService {
   constructor(private readonly fileUploadService: FileUploadService) {}
 
-  async uploadImage(productId: string, file: Express.Multer.File) {
+  async uploadImage(articleId: string, file: Express.Multer.File) {
     const key = await this.fileUploadService.upload(
       file,
-      `products/${productId}`,
+      `articles/${articleId}`,
     );
     return key; // Store this key in the database, NOT the presigned URL
   }
@@ -981,7 +1017,7 @@ Use `@ResolvePresignedUrls()` on controller methods to auto-convert S3 keys in t
 @Get(':id')
 @ResolvePresignedUrls('imageKey', 'thumbnailKey')  // field names in the response
 async findOne(@Param('id') id: string) {
-  return this.productService.findById(id);
+  return this.articleService.findById(id);
   // Response will have imageKey replaced with a presigned URL automatically
 }
 ```
@@ -992,39 +1028,20 @@ async findOne(@Param('id') id: string) {
 
 ## 13. Async Notifications (BullMQ)
 
-Emails and SMS are **never sent synchronously** during a request. They are queued (`EMAIL_NOTIFICATION_QUEUE`, `SMS_NOTIFICATION_QUEUE`) and processed by workers.
+Emails are **never sent synchronously** during a request. They are queued (`EMAIL_NOTIFICATION_QUEUE`) and processed by a worker. SMS OTP is a deliberate, narrow exception — see below.
 
 `NotificationService` exposes **purpose-specific** methods, not a generic `sendEmail`. The current methods are:
 
-| Method                                 | Channel | Behaviour                                                |
-| -------------------------------------- | ------- | -------------------------------------------------------- |
-| `sendTwoFactorCode(payload)`           | Email   | Fire-and-forget (queued, returns `void`)                 |
-| `sendForgotPasswordResetCode(payload)` | Email   | Fire-and-forget (queued, returns `void`)                 |
-| `sendSmsOtp(payload)`                  | SMS     | Awaits the worker result → `{ success, requestId }`      |
-| `verifySmsOtp(payload)`                | SMS     | Awaits the worker result → `{ success, verifiedAt, to }` |
-
-```typescript
-@Injectable()
-export class TwoFactorService {
-  constructor(private readonly notificationService: NotificationService) {}
-
-  async challenge(admin: Admin, code: string) {
-    // Fire-and-forget: queued asynchronously, request is not blocked on delivery
-    await this.notificationService.sendTwoFactorCode({
-      email: admin.email,
-      name: admin.fullName,
-      code,
-    });
-  }
-}
-```
+| Method                                 | Channel | Behaviour                                |
+| --------------------------------------- | ------- | ------------------------------------------ |
+| `sendForgotPasswordResetCode(payload)` | Email   | Fire-and-forget (queued, returns `void`) |
 
 When adding a new email type, add a method here plus a job handler in `EmailProcessor` — do not call Nodemailer from a request handler.
 
 ### How It Works
 
 ```
-Service calls notificationService.sendTwoFactorCode()
+Service calls notificationService.sendForgotPasswordResetCode()
         │
         ▼
 Job added to EMAIL_NOTIFICATION_QUEUE (Redis/BullMQ)
@@ -1036,7 +1053,38 @@ EmailProcessor picks up the job (by job name)
 Nodemailer sends the email
 ```
 
-SMS works the same way via `SMS_NOTIFICATION_QUEUE` and `SmsProcessor`, except `sendSmsOtp`/`verifySmsOtp` await the job result because the caller needs the provider `requestId`/verification outcome.
+### SMS OTP — A Deliberate Exception
+
+SMS is **not** queued through `NotificationService`/BullMQ — there is no `SMS_NOTIFICATION_QUEUE`
+or `SmsProcessor`. `UserAuthService` and `PasswordResetService` inject `SMSPohService`
+(`src/common/services/sms-poh.service.ts`) directly and call it synchronously in the request path:
+
+```typescript
+@Injectable()
+export class UserAuthService {
+  constructor(private readonly smsPohService: SMSPohService) {}
+
+  async userRegisterOTPRequest(dto: UserRegisterOTPRequestDto) {
+    const { success, requestId } = await this.smsPohService.sendOTP({
+      to: dto.phone,
+      message: '...',
+    });
+    // requestId is needed immediately to correlate the later verify call
+  }
+
+  async userRegisterOTPVerify(dto: UserRegisterOTPVerifyDto) {
+    await this.smsPohService.verifyOTP({
+      requestId: dto.requestId,
+      code: dto.otp,
+    });
+  }
+}
+```
+
+This is intentional: OTP send/verify are request/response operations the caller needs an
+immediate result from (`{ success, requestId }` on send, a thrown exception or success on verify)
+— not fire-and-forget notifications. Treat it like calling any other external API (comparable to
+an S3 or payment-gateway call), not as a queued notification.
 
 ### Event-Driven Notifications
 
@@ -1064,7 +1112,7 @@ import {
 } from 'class-validator';
 import { PartialType, PickType } from '@nestjs/mapped-types';
 
-export class CreateProductDto {
+export class CreateArticleDto {
   @IsString()
   @MinLength(2)
   @MaxLength(255)
@@ -1074,23 +1122,23 @@ export class CreateProductDto {
   @IsOptional()
   description?: string;
 
-  @IsEnum(ProductCategory)
-  category: ProductCategory;
+  @IsEnum(ArticleCategory)
+  category: ArticleCategory;
 }
 
 // Update DTO — all fields optional automatically
-export class UpdateProductDto extends PartialType(CreateProductDto) {}
+export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
 ```
 
 ### Pagination DTO — Always Extend This
 
 ```typescript
-import { PaginationFilterDto } from 'src/common/dto/pagination-filter.dto';
+import { PaginationFilterDto } from 'src/common/dto';
 
-export class FilterProductDto extends PaginationFilterDto {
+export class FilterArticleDto extends PaginationFilterDto {
   @IsOptional()
-  @IsEnum(ProductCategory)
-  category?: ProductCategory;
+  @IsEnum(ArticleCategory)
+  category?: ArticleCategory;
 
   @IsOptional()
   @IsString()
@@ -1142,22 +1190,25 @@ No action needed — this is automatic.
 
 ## 15. Transaction Management
 
-Use `@Transactional()` for operations that must succeed or fail together. The decorated class **must** expose a `dataSource` property (inject it with `@InjectDataSource()`) — the decorator reads `this.dataSource` and throws at call time if it's missing. Propagation is REQUIRED: a nested `@Transactional()` call reuses the active transaction rather than opening a new one.
+Transactions are powered by [`@nestjs-cls/transactional`](https://papooch.github.io/nestjs-cls/plugins/available-plugins/transactional) with the TypeORM adapter (registered globally in `app.module.ts`). Use `@Transactional()` for operations that must succeed or fail together. Inside a transactional method, **all** database access must go through `this.txHost.tx` — the transaction-aware `EntityManager` from the injected `TransactionHost`. Outside a transaction, `txHost.tx` transparently falls back to the default manager, so the same code works in non-transactional methods too. Propagation is REQUIRED by default: a nested `@Transactional()` call reuses the active transaction rather than opening a new one.
+
+> Use `this.txHost.tx` for both reads and writes inside transactional services — do **not** mix in `@InjectRepository(...)` repositories, as those bypass the active transaction and won't see uncommitted rows.
 
 ```typescript
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { Transactional } from 'src/common/transaction/transactional.decorator';
+import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
+import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
 
 @Injectable()
 export class OrderService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
+  ) {}
 
   @Transactional()
   async placeOrder(dto: PlaceOrderDto): Promise<Order> {
     // All queries in this method run in a single DB transaction
-    const order = await this.orderRepository.save({ ...dto });
-    await this.inventoryService.deductStock(dto.productId, dto.quantity);
+    const order = await this.txHost.tx.save(Order, { ...dto });
+    await this.inventoryService.deductStock(dto.articleId, dto.quantity);
     await this.paymentService.charge(dto.paymentDetails);
     // If any line throws, ALL changes are rolled back automatically
     return order;
@@ -1203,13 +1254,13 @@ export class OrderService {
 
 ## 17. Environment Variables
 
-Copy `.env.example` to `.env` and fill in all values. The Joi schema in [env.validation.ts](src/common/config/env.validation.ts) is the source of truth — it runs with `allowUnknown: true`, so vars not listed there (e.g. `REDIS_PREFIX_KEY`) are read directly via `ConfigService` and are not validated. Variables marked **required** below abort startup if missing.
+Copy `.env.example` to `.env` and fill in all values. The Joi schema in [env.validation.ts](src/common/config/env.validation.ts) is the source of truth — it runs with `allowUnknown: true`, so vars not listed there (e.g. `SMTP_USERNAME`, `SMTP_USER_PASSWORD`) are read directly via `ConfigService` and are not validated. Variables marked **required** below abort startup if missing.
 
 ```bash
 # App
 NODE_ENV=development             # development | production | test (default: development)
 PORT=3000                        # default 3000
-APP_NAME=nest-forge              # default "NestJS TypeORM API Starter"
+APP_NAME=nest-forge              # default "nest-forge"
 # Note: TZ is forced to 'UTC' in src/main.ts — it is NOT read from the environment.
 
 # Database (DB_HOST, DB_USERNAME, DB_PASSWORD, DB_NAME are REQUIRED)
@@ -1231,7 +1282,7 @@ JWT_REFRESH_EXPIRATION=2592000000  # 30 days in ms (default)
 # Redis
 REDIS_HOST=localhost             # default localhost
 REDIS_PORT=6379                  # default 6379
-REDIS_PREFIX_KEY=nest_forge:     # BullMQ/cache key prefix (read directly, not validated)
+REDIS_PREFIX_KEY=nest-forge      # BullMQ/cache key prefix (default "nest-forge")
 
 # CORS (comma-separated origins, or '*'/'all'/'true' for all — dev only)
 CORS_ORIGINS=http://localhost:3000
@@ -1266,6 +1317,15 @@ SMS_POH_API_SENDER_ID=...
 
 ## 18. Database Migrations & Seeding
 
+> **Note:** This template ships a single baseline migration, `CreateFoundationSchema`
+> (`src/infrastructure/database/migrations/1784000000000-CreateFoundationSchema.ts`), which creates
+> the full foundation schema in one pass — `synchronize` is `false`. It also carries the
+> constraints TypeORM does not emit from decorators alone, including polymorphic-owner `CHECK`
+> constraints (e.g. `CK_refresh_tokens_owner`, ensuring a `RefreshToken` belongs to exactly one of
+> `User`/`Admin`) and enum-backed `CHECK` constraints (e.g. `CK_users_login_provider`,
+> `CK_otp_records_status`, `CK_otp_records_purpose`). Run `forge db migrate run` to apply it, then
+> generate further migrations the normal way as entities evolve.
+
 ### The `forge` CLI
 
 The project ships a purpose-built CLI at `cli/` that wraps all database operations under a single `forge db` command tree. It is registered as a local binary in `package.json`:
@@ -1285,7 +1345,7 @@ npx ts-node cli/index.ts db --help
 |                       | `forge` CLI                                           | `npm run migration:*`                   |
 | --------------------- | ----------------------------------------------------- | --------------------------------------- |
 | Migration output path | Enforced to `src/infrastructure/database/migrations/` | Must be typed manually (full path)      |
-| Naming                | Just pass the name: `AddProductTable`                 | Full path required                      |
+| Naming                | Just pass the name: `AddArticleTable`                 | Full path required                      |
 | Discoverability       | `forge db --help` lists all sub-commands              | Must read `package.json`                |
 | Seeding               | `forge db seed / clear / reset`                       | `npm run db:seed / db:clear / db:reset` |
 
@@ -1306,8 +1366,8 @@ forge db
 
 ```bash
 # Generate a new migration — just provide the name, path is enforced automatically
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate AddProductTable
-# Creates: src/infrastructure/database/migrations/<timestamp>-AddProductTable.ts
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate AddArticleTable
+# Creates: src/infrastructure/database/migrations/<timestamp>-AddArticleTable.ts
 
 # Apply all pending migrations
 npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
@@ -1319,7 +1379,7 @@ npx ts-node -r tsconfig-paths/register cli/index.ts db migrate revert
 Equivalent `npm run` aliases (for quick use in development):
 
 ```bash
-npm run migration:generate src/infrastructure/database/migrations/AddProductTable
+npm run migration:generate src/infrastructure/database/migrations/AddArticleTable
 npm run migration:run
 npm run migration:revert
 
@@ -1373,6 +1433,7 @@ npm run db:reset
 7. **Never send emails/SMS synchronously.** Always queue them via `NotificationService`.
 8. **Always validate environment variables.** Add new vars to the Joi schema in `env.validation.ts`.
 9. **Respect module boundaries — they're linted.** `no-restricted-imports` and `import-x/no-cycle` in `eslint.config.mjs` enforce barrel imports and reject circular dependencies. Run `npm run lint`.
+10. **Never use a native database `enum` type.** Use `varchar` + a TS `enum` + a migration `CHECK` constraint instead (see §9 and ADR-0009).
 
 ### Code Quality Rules
 
@@ -1413,6 +1474,87 @@ try {
 4. Use parameterized queries — TypeORM repository methods are safe by default
 5. Rate limiting is global — add stricter limits on auth endpoints with `@Throttle()`
 
+### Database & Query Performance
+
+**Avoid N+1 queries.** Never load a relation by calling a `findOne`/service lookup once per row in a loop — load it in the same query instead.
+
+```typescript
+// ❌ WRONG — one query per admin (N+1)
+const admins = await this.adminRepository.find();
+for (const admin of admins) {
+  admin.role = await this.roleRepository.findOne({ where: { id: admin.roleId } });
+}
+
+// ✅ Simple lookup by id — use `relations`
+const admin = await this.adminRepository.findOne({
+  where: { id },
+  relations: ['role'],
+});
+
+// ✅ Filtered/paginated list, or multi-level relations — use the query builder
+const [admins, total] = await this.adminRepository
+  .createQueryBuilder('admin')
+  .leftJoinAndSelect('admin.role', 'role')
+  .skip(skip)
+  .take(limit)
+  .getManyAndCount();
+```
+
+Use `relations: [...]` for a simple lookup by id; use `createQueryBuilder` + `leftJoinAndSelect` once filtering, pagination, ordering, or multi-level relations are involved. Always paginate list endpoints via `PaginationFilterDto` (`skip`/`take`, `getAll` opt-out — see §14); don't hand-roll a second pagination shape.
+
+Never set `eager: true` on a relation — always load relations explicitly (`relations:`/`leftJoinAndSelect`) so each call site controls its own query cost instead of paying for a join it doesn't need.
+
+Every `@ManyToOne` sets `onDelete` explicitly — never leave it to the TypeORM default. Pick based on ownership:
+
+| Relationship                                          | `onDelete` |
+| ------------------------------------------------------ | ---------- |
+| Owned child record (e.g. `RefreshToken` → `User`)      | `CASCADE`  |
+| Optional/nullable reference (e.g. `AuditLog` → `Admin`) | `SET NULL` |
+| Protected reference data (e.g. `Admin` → `Role`)        | `RESTRICT` |
+
+### Request-Level Performance & Caching
+
+The app already wires up `CacheModule` globally (`app.module.ts`, Redis-backed, default TTL 600s). Use it for hot reads that don't need to be strictly real-time, following the existing convention (`src/modules/auth/services/registration-session.service.ts`):
+
+```typescript
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+
+@Injectable()
+export class ArticleService {
+  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
+
+  private getKey(id: string): string {
+    return `article:${id}`;
+  }
+
+  async findById(id: string): Promise<Article> {
+    const cached = await this.cacheManager.get<Article>(this.getKey(id));
+    if (cached) return cached;
+
+    const article = await this.articleRepository.findOneOrFail({ where: { id } });
+    await this.cacheManager.set(this.getKey(id), article, 300 * 1000); // explicit TTL, don't rely on the global default when it doesn't fit
+    return article;
+  }
+
+  async update(id: string, dto: UpdateArticleDto): Promise<Article> {
+    const article = await this.articleRepository.save({ id, ...dto });
+    await this.cacheManager.del(this.getKey(id)); // invalidate in the same method that writes
+    return article;
+  }
+}
+```
+
+**Rule:** any service that caches a read must invalidate (`cacheManager.del`) the corresponding key(s) in every method that writes/updates/deletes that same data. Cache and database must never be allowed to silently diverge.
+
+Never perform blocking or CPU-heavy work synchronously in the request path — if it isn't needed for the immediate response, queue it (see §13's BullMQ pattern) rather than making the caller wait.
+
+### General Backend Hygiene
+
+- **Idempotency:** for mutation endpoints a client may retry (e.g. after a timeout), rely on the existing partial-unique-index + `23505` → `409 Conflict` mapping (§9, ADR-0007) as the safety net rather than building bespoke idempotency-key infrastructure.
+- **Defensive timeouts on outbound calls:** third-party calls (S3, SMS, OAuth) should set their own client-level timeout rather than relying solely on the global 10s controller timeout (`@RequestTimeout`, §16) — a slow outbound call should fail fast, not just cut off the HTTP response.
+- **N+1 across module boundaries too:** if a loop calls another module's service method once per item, check whether that service should expose a batch method instead of accepting the per-item round trips.
+
 ---
 
 ## 20. Common Mistakes to Avoid
@@ -1440,26 +1582,26 @@ try {
 
 ## 21. Adding a New Module — Step-by-Step
 
-Follow this checklist when creating a new domain module (example: `product`).
+Follow this checklist when creating a new domain module (example: `article`).
 
 ### Step 1 — Create the Directory Structure
 
 ```bash
-mkdir -p src/modules/product/{dto,entities,services}
-touch src/modules/product/product.module.ts
-touch src/modules/product/index.ts
-touch src/modules/product/api.ts
+mkdir -p src/modules/article/{dto,entities,services}
+touch src/modules/article/article.module.ts
+touch src/modules/article/index.ts
+touch src/modules/article/api.ts
 ```
 
 ### Step 2 — Create the Entity
 
 ```typescript
-// src/modules/product/entities/product.entity.ts
+// src/modules/article/entities/article.entity.ts
 import { Entity, Column } from 'typeorm';
-import { BaseEntity } from 'src/common/entities/base.entity';
+import { BaseEntity } from 'src/common/entities';
 
-@Entity('products')
-export class Product extends BaseEntity {
+@Entity('articles')
+export class Article extends BaseEntity {
   @Column({ length: 255 })
   name: string;
 
@@ -1471,10 +1613,10 @@ export class Product extends BaseEntity {
 ### Step 3 — Create DTOs
 
 ```typescript
-// src/modules/product/dto/create-product.dto.ts
+// src/modules/article/dto/create-article.dto.ts
 import { IsString, IsNumber, Min } from 'class-validator';
 
-export class CreateProductDto {
+export class CreateArticleDto {
   @IsString()
   name: string;
 
@@ -1485,59 +1627,59 @@ export class CreateProductDto {
 ```
 
 ```typescript
-// src/modules/product/dto/update-product.dto.ts
+// src/modules/article/dto/update-article.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
-import { CreateProductDto } from './create-product.dto';
+import { CreateArticleDto } from './create-article.dto';
 
-export class UpdateProductDto extends PartialType(CreateProductDto) {}
+export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
 ```
 
 ### Step 4 — Create the Service
 
 ```typescript
-// src/modules/product/services/product.service.ts
+// src/modules/article/services/article.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Logger } from '@nestjs/common';
-import { Product } from '../entities/product.entity';
-import { CreateProductDto } from '../dto/create-product.dto';
-import { UpdateProductDto } from '../dto/update-product.dto';
+import { Article } from '../entities/article.entity';
+import { CreateArticleDto } from '../dto/create-article.dto';
+import { UpdateArticleDto } from '../dto/update-article.dto';
 
 @Injectable()
-export class ProductService {
-  private readonly logger = new Logger(ProductService.name);
+export class ArticleService {
+  private readonly logger = new Logger(ArticleService.name);
 
   constructor(
-    @InjectRepository(Product)
-    private readonly productRepository: Repository<Product>,
+    @InjectRepository(Article)
+    private readonly articleRepository: Repository<Article>,
   ) {}
 
-  async create(dto: CreateProductDto): Promise<Product> {
-    const product = this.productRepository.create(dto);
-    return this.productRepository.save(product);
+  async create(dto: CreateArticleDto): Promise<Article> {
+    const article = this.articleRepository.create(dto);
+    return this.articleRepository.save(article);
   }
 
-  async findAll(): Promise<Product[]> {
+  async findAll(): Promise<Article[]> {
     // No deletedAt clause needed — @DeleteDateColumn makes TypeORM exclude
     // soft-deleted rows automatically. Use { withDeleted: true } to include them.
-    return this.productRepository.find();
+    return this.articleRepository.find();
   }
 
-  async findById(id: string): Promise<Product> {
-    const product = await this.productRepository.findOne({ where: { id } });
-    if (!product) throw new NotFoundException(`Product ${id} not found`);
-    return product;
+  async findById(id: string): Promise<Article> {
+    const article = await this.articleRepository.findOne({ where: { id } });
+    if (!article) throw new NotFoundException(`Article ${id} not found`);
+    return article;
   }
 
-  async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    const product = await this.findById(id);
-    return this.productRepository.save({ ...product, ...dto });
+  async update(id: string, dto: UpdateArticleDto): Promise<Article> {
+    const article = await this.findById(id);
+    return this.articleRepository.save({ ...article, ...dto });
   }
 
   async remove(id: string): Promise<void> {
-    const product = await this.findById(id);
-    await this.productRepository.softRemove(product);
+    const article = await this.findById(id);
+    await this.articleRepository.softRemove(article);
   }
 }
 ```
@@ -1545,18 +1687,18 @@ export class ProductService {
 ### Step 5 — Create the Module
 
 ```typescript
-// src/modules/product/product.module.ts
+// src/modules/article/article.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Product } from './entities/product.entity';
-import { ProductService } from './services/product.service';
+import { Article } from './entities/article.entity';
+import { ArticleService } from './services/article.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product])],
-  providers: [ProductService],
-  exports: [ProductService],
+  imports: [TypeOrmModule.forFeature([Article])],
+  providers: [ArticleService],
+  exports: [ArticleService],
 })
-export class ProductModule {}
+export class ArticleModule {}
 ```
 
 ### Step 6 — Create the Two Barrel Files
@@ -1564,29 +1706,29 @@ export class ProductModule {}
 **`index.ts`** — module wiring and domain types only (no services, no DTOs):
 
 ```typescript
-// src/modules/product/index.ts
-export { ProductModule } from './product.module'; // for app.module.ts imports
-export { Product } from './entities/product.entity'; // entity type for other domain services
-// No ProductService — services live in api.ts
+// src/modules/article/index.ts
+export { ArticleModule } from './article.module'; // for app.module.ts imports
+export { Article } from './entities/article.entity'; // entity type for other domain services
+// No ArticleService — services live in api.ts
 // No DTOs — DTOs live in api.ts
 ```
 
 **`api.ts`** — services, DTOs, and route decorators only (no module class, no entities):
 
 ```typescript
-// src/modules/product/api.ts
-export { ProductService } from './services/product.service';
-export { CreateProductDto } from './dto/create-product.dto';
-export { UpdateProductDto } from './dto/update-product.dto';
-export { FilterProductDto } from './dto/filter-product.dto';
-// No ProductModule — controllers don't register modules
-// No Product entity — raw entities never cross the HTTP boundary
+// src/modules/article/api.ts
+export { ArticleService } from './services/article.service';
+export { CreateArticleDto } from './dto/create-article.dto';
+export { UpdateArticleDto } from './dto/update-article.dto';
+export { FilterArticleDto } from './dto/filter-article.dto';
+// No ArticleModule — controllers don't register modules
+// No Article entity — raw entities never cross the HTTP boundary
 ```
 
 ### Step 7 — Create the Controller
 
 ```typescript
-// src/api/v1/admin/product/product.controller.ts
+// src/api/v1/admin/article/article.controller.ts
 import {
   Controller,
   Get,
@@ -1598,43 +1740,43 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  ProductService,
-  CreateProductDto,
-  UpdateProductDto,
-} from 'src/modules/product/api';
+  ArticleService,
+  CreateArticleDto,
+  UpdateArticleDto,
+} from 'src/modules/article/api';
 import { RequireRoles, RolesGuard } from 'src/modules/role';
 
-@Controller({ path: 'admin/products', version: '1' }) // → /api/v1/admin/products
+@Controller({ path: 'admin/articles', version: '1' }) // → /api/v1/admin/articles
 @UseGuards(RolesGuard) // guard applied once at class level
-export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+export class ArticleController {
+  constructor(private readonly articleService: ArticleService) {}
 
   @Get()
   findAll() {
-    return this.productService.findAll();
+    return this.articleService.findAll();
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.productService.findById(id);
+    return this.articleService.findById(id);
   }
 
   @Post()
   @RequireRoles('superadmin', 'editor')
-  create(@Body() dto: CreateProductDto) {
-    return this.productService.create(dto);
+  create(@Body() dto: CreateArticleDto) {
+    return this.articleService.create(dto);
   }
 
   @Put(':id')
   @RequireRoles('superadmin', 'editor')
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.productService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
+    return this.articleService.update(id, dto);
   }
 
   @Delete(':id')
   @RequireRoles('superadmin')
   remove(@Param('id') id: string) {
-    return this.productService.remove(id);
+    return this.articleService.remove(id);
   }
 }
 ```
@@ -1645,12 +1787,12 @@ Place admin-facing controllers under `src/api/v1/admin/<resource>/` and end-user
 
 ```typescript
 // src/app.module.ts
-import { ProductModule } from 'src/modules/product';
+import { ArticleModule } from 'src/modules/article';
 
 @Module({
   imports: [
     // ... existing modules
-    ProductModule,
+    ArticleModule,
   ],
 })
 export class AppModule {}
@@ -1667,11 +1809,11 @@ Pick the API-module pattern when a zone has multiple controllers or needs audien
 
 ```bash
 # Using the forge CLI (recommended — path is enforced automatically):
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate CreateProductsTable
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate CreateArticlesTable
 npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
 
 # Or via npm run aliases:
-npm run migration:generate src/infrastructure/database/migrations/CreateProductsTable
+npm run migration:generate src/infrastructure/database/migrations/CreateArticlesTable
 npm run migration:run
 ```
 
@@ -1679,8 +1821,38 @@ npm run migration:run
 
 ```bash
 npm run start:dev
-# Test endpoints at http://localhost:3000/api/v1/products
+# Test endpoints at http://localhost:3000/api/v1/articles
 ```
+
+---
+
+## 22. Quality Gates
+
+Two independent checkpoints enforce code health — one local (fast, staged-files-only), one in CI (full project, every PR).
+
+### Pre-commit (`.husky/pre-commit`) — runs on every commit
+
+```
+npx lint-staged   # Prettier --write + ESLint --fix, staged src/**/*.ts and test/**/*.ts only (.lintstagedrc)
+npm run knip      # Unused files, exports, and dependencies — full project (knip.json), not just staged files
+```
+
+`knip.json` defines the project's entry points (`src/main.ts`, `src/data-source.ts`, migrations, tests) and scans `src/**/*.ts`, `cli/**/*.ts`, `test/**/*.ts` for anything unreachable from them.
+
+### CI (`.github/workflows/ci.yml`) — runs on every PR and push to `main`, in order
+
+1. `npm run lint:check` — ESLint, **no** `--fix`: a violation fails the build instead of silently patching it.
+2. `npm run typecheck` — `tsc --noEmit`: the whole project must compile with zero type errors.
+3. `npm test` — Jest unit tests.
+4. `npm run build` — the Nest build must succeed.
+
+### Rules
+
+- Never bypass these with `--no-verify` or by disabling a script — fix the underlying issue instead.
+- Run `npm run typecheck` locally before pushing; don't rely on CI to be the first place a type error surfaces.
+- **Handling a knip false positive:** first check whether the file/export is genuinely dead — if so, delete it; don't suppress the finding. Only add an entry to `knip.json`'s ignore config when the symbol is a deliberately-kept public API surface knip can't infer (e.g. exported for an external consumer, referenced dynamically) — and leave a one-line comment at the ignore entry explaining why, so it doesn't read as stale later.
+
+These gates run alongside the module-boundary linting already described in §5 (Automated Enforcement) and the migration discipline in §9 — this section is about *what runs and when*, not a restatement of those rules.
 
 ---
 
@@ -1695,7 +1867,7 @@ Need an entity/event?   Import from index.ts — entities and events live there.
 DB change?              Edit entity → forge db migrate generate <Name> → forge db migrate run.
 Send email/SMS?         Queue it via NotificationService. Never send inline.
 File upload?            Store S3 key in DB. Use @ResolvePresignedUrls on GET.
-Need a transaction?     Annotate the service method with @Transactional().
+Need a transaction?     Annotate with @Transactional(); access the DB via this.txHost.tx.
 Public endpoint?        Add @Public() decorator.
 Role restriction?       @UseGuards(RolesGuard) + @RequireRoles(...), or @UseGuards(PermissionsGuard) + @RequirePermissions(...).
 Seed / reset DB?        forge db seed | forge db reset.

@@ -7,11 +7,8 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import {
-  PRESIGNED_URLS_KEY,
-  PresignedUrlField,
-} from '../decorators/presigned-urls.decorator';
-import { S3ClientUtils } from '../utils/s3-client.utils';
+import { PRESIGNED_URLS_KEY, PresignedUrlField } from '../decorators';
+import { S3ClientService } from '../services';
 
 type NormalizedPresignedUrlField = {
   path: string;
@@ -22,7 +19,7 @@ type NormalizedPresignedUrlField = {
 export class PresignedUrlInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
-    private readonly s3ClientUtils: S3ClientUtils,
+    private readonly s3ClientService: S3ClientService,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -115,7 +112,7 @@ export class PresignedUrlInterceptor implements NestInterceptor {
   private async resolveUrl(value: unknown): Promise<string | null> {
     if (typeof value !== 'string') return null;
 
-    return this.s3ClientUtils.generatePresignedUrl(value);
+    return this.s3ClientService.generatePresignedUrl(value);
   }
 
   private isRecord(value: unknown): value is Record<string, any> {

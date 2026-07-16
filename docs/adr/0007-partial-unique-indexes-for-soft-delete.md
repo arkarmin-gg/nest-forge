@@ -33,7 +33,7 @@ No service logic changed:
 ## Alternatives considered
 
 - **Restore-on-reuse** — on reuse, undelete the original row instead of creating a new one. Rejected: resurrects old data and relations under a "deleted" account; surprising, and there is no restore path in the system today.
-- **Block reuse forever** — keep unconditional constraints and make the pre-checks soft-delete-aware so a deleted value can never be reused. Rejected: not the desired product behaviour; a freed phone/email should be reclaimable.
+- **Block reuse forever** — keep unconditional constraints and make the pre-checks soft-delete-aware so a deleted value can never be reused. Rejected: not the desired template behavior; a freed phone/email should be reclaimable.
 - **Mutate the unique column on delete** (e.g. append the id/timestamp to `email` when soft-deleting). Rejected: corrupts stored data, complicates auditing, and is easy to get wrong across entities.
 
 ## Consequences

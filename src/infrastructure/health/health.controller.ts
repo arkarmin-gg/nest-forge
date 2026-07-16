@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -8,10 +10,9 @@ import {
 } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { Public } from 'src/modules/auth/api';
 import { DataSource } from 'typeorm';
+import { BullMqHealthIndicator } from './indicators/bullmq.health';
 
 const { version } = JSON.parse(
   readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
@@ -24,6 +25,7 @@ export class HealthController {
     private readonly health: HealthCheckService,
     private readonly db: TypeOrmHealthIndicator,
     private readonly memory: MemoryHealthIndicator,
+    private readonly bullMq: BullMqHealthIndicator,
     private readonly configService: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
@@ -35,6 +37,7 @@ export class HealthController {
     const result = await this.health.check([
       () => this.db.pingCheck('database', { connection: this.dataSource }),
       () => this.memory.checkHeap('memory_heap', 300 * 1024 * 1024),
+      () => this.bullMq.pingCheck('redis'),
     ]);
     return {
       ...result,

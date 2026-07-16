@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/common/entities/base.entity';
+import { SoftDeletableEntity } from 'src/common/entities';
 import {
   Column,
   Entity,
@@ -10,36 +10,14 @@ import {
 } from 'typeorm';
 import { ModuleEntity } from './module.entity';
 import { RolePermission } from './role-permission.entity';
-
-export enum ActionType {
-  CREATE = 'CREATE',
-  READ = 'READ',
-  UPDATE = 'UPDATE',
-  DELETE = 'DELETE',
-}
-
-export enum PermissionModule {
-  ADMIN = 'ADMIN',
-  ADMIN_LIST = 'ADMIN_LIST',
-  ADMIN_ROLE_PERMISSIONS = 'ADMIN_ROLE_PERMISSIONS',
-
-  SETTING = 'SETTING',
-  SETTING_SMTP = 'SETTING_SMTP',
-
-  APPLICATION_USER = 'APPLICATION_USER',
-  APPLICATION_USER_LIST = 'APPLICATION_USER_LIST',
-
-  LOGS = 'LOGS',
-  ACTIVITY_LOGS = 'ACTIVITY_LOGS',
-  AUDIT_LOGS = 'AUDIT_LOGS',
-}
+import { ActionType } from '../constants/action-type.enum';
 
 @Entity('permissions')
 @Index('UQ_permissions_module_action_active', ['moduleId', 'action'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
-export class Permission extends BaseEntity {
+export class Permission extends SoftDeletableEntity {
   @Index()
   @Column('uuid')
   moduleId!: string;
@@ -47,7 +25,7 @@ export class Permission extends BaseEntity {
   @ManyToOne(() => ModuleEntity, (module) => module.permissions, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'moduleId' })
+  @JoinColumn({ name: 'module_id' })
   module!: Relation<ModuleEntity>;
 
   @Column({ type: 'varchar' })

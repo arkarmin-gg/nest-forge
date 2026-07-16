@@ -24,10 +24,10 @@ export class AuditLog {
   adminId!: string | null;
 
   @ManyToOne(() => Admin, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'adminId' })
+  @JoinColumn({ name: 'admin_id' })
   admin!: Admin;
 
-  @Column({ type: 'enum', enum: LogAction })
+  @Column({ type: 'varchar' })
   action!: LogAction;
 
   @Column({ type: 'text' })
@@ -63,7 +63,7 @@ export class AuditLog {
   @Column({ nullable: true })
   location!: string;
 
-  @Column({ type: 'enum', enum: LogStatus, default: LogStatus.SUCCESS })
+  @Column({ type: 'varchar', default: LogStatus.SUCCESS })
   status!: LogStatus;
 
   @Column({ type: 'jsonb', nullable: true })

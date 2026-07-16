@@ -3,14 +3,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Role } from 'src/modules/role';
 import { Repository } from 'typeorm';
 import { Admin } from '../entities/admin.entity';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AdminSeeder {
   constructor(
     @InjectRepository(Admin)
-    private adminRepository: Repository<Admin>,
+    private readonly adminRepository: Repository<Admin>,
     @InjectRepository(Role)
-    private roleRepository: Repository<Role>,
+    private readonly roleRepository: Repository<Role>,
+    private readonly configService: ConfigService,
   ) {}
 
   async seed(): Promise<void> {
@@ -22,7 +24,14 @@ export class AdminSeeder {
       throw new Error('Super Admin role must be seeded before admin seeding');
     }
 
-    const email = 'arkarmin@obs.com.mm';
+    const email = this.configService.get<string>(
+      'SUPER_ADMIN_EMAIL',
+      'admin@example.com',
+    );
+    const password = this.configService.get<string>(
+      'SUPER_ADMIN_PASSWORD',
+      'passwordD123!@#',
+    );
     const existing = await this.adminRepository.findOne({ where: { email } });
     if (!existing) {
       await this.adminRepository.save(
@@ -30,7 +39,7 @@ export class AdminSeeder {
           email,
           fullName: 'Super Admin',
           roleId: role.id,
-          password: 'passwordD123!@#',
+          password,
         }),
       );
     }

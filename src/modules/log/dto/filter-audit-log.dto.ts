@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 import { LogAction } from '../constants/log-action.enum';
 import { LogStatus } from '../constants/log-status.enum';
-import { PaginationFilterDto } from 'src/common/dto/pagination-filter.dto';
+import { PaginationFilterDto } from 'src/common/dto';
 
 export class FilterAuditLogDto extends PaginationFilterDto {
   @IsOptional()

@@ -1,6 +1,6 @@
 # Context
 
-Domain glossary for the NestJS TypeORM API Starter. Implementation details belong in code and ADRs — this file is a glossary only.
+Domain glossary for the nest-forge. Implementation details belong in code and ADRs — this file is a glossary only.
 
 ---
 
@@ -9,7 +9,7 @@ Domain glossary for the NestJS TypeORM API Starter. Implementation details belon
 A `Subject` is any entity that can authenticate with the system. There are two subject types:
 
 - **User** — a mobile/end-user who registers via phone OTP and logs in with phone + password or OAuth (Google, Apple).
-- **Admin** — a back-office operator who logs in with email + password and may have 2FA enabled.
+- **Admin** — a back-office operator who logs in with email + password.
 
 The `subjectType` field on `JwtPayload` (`'USER' | 'ADMIN'`) discriminates between the two at the API boundary.
 
@@ -39,7 +39,6 @@ An `OtpRecord` is a short-lived verification record used to validate a one-time 
 
 **OtpPurpose** (formerly `CacheKeyService`) — the reason the OTP was issued:
 
-- `TWO_FACTOR` — used to verify a 2FA login challenge.
 - `RESET_PASSWORD` — used to authorize a password reset.
 
 `OtpRecord` is owned by the `OtpModule`, not the `AuthModule`.
@@ -56,7 +55,7 @@ The distinction: `ActivityLog` is "what did the user do?"; `AuditLog` is "what d
 **Two write paths — both emit to the same log tables:**
 
 - **Interceptor path** — `ActivityLogInterceptor` fires on any handler decorated with `@LogActivity()`. Used for authenticated endpoints where `request.user` is already populated. The interceptor routes to `ActivityLog` or `AuditLog` based on `subjectType`.
-- **Service event path** — Domain services emit `ActivityLogEvent` or `AuditLogEvent` via `EventEmitter2`. Used for pre-auth endpoints (`@Public()`) where `request.user` is null at interceptor time (login, registration, 2FA confirm, password reset). Also used for failure-case logging, which the interceptor cannot capture.
+- **Service event path** — Domain services emit `ActivityLogEvent` or `AuditLogEvent` via `EventEmitter2`. Used for pre-auth endpoints (`@Public()`) where `request.user` is null at interceptor time (login, registration, SMS OTP verification, password reset). Also used for failure-case logging, which the interceptor cannot capture.
 
 ---
 

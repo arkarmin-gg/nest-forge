@@ -14,8 +14,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
-import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { ResolvePresignedUrls } from 'src/common/decorators';
+import { imageInterceptorOptions } from 'src/common/config';
 import {
   AdminService,
   CreateAdminDto,
@@ -44,9 +44,7 @@ export class AdminController {
     { module: PermissionModule.ADMIN, permission: 'create' },
     { module: PermissionModule.ADMIN_LIST, permission: 'create' },
   )
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
+  @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() createAdminDto: CreateAdminDto,
@@ -55,7 +53,7 @@ export class AdminController {
   }
 
   @Get()
-  @ResolvePresignedUrls('profileImageUrl')
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'read' },
     { module: PermissionModule.ADMIN_LIST, permission: 'read' },
@@ -65,7 +63,7 @@ export class AdminController {
   }
 
   @Get(':id')
-  @ResolvePresignedUrls('profileImageUrl')
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'read' },
     { module: PermissionModule.ADMIN_LIST, permission: 'read' },
@@ -84,9 +82,7 @@ export class AdminController {
     { module: PermissionModule.ADMIN, permission: 'update' },
     { module: PermissionModule.ADMIN_LIST, permission: 'update' },
   )
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
+  @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   async update(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: Express.Multer.File,

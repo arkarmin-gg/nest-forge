@@ -1,5 +1,6 @@
 process.env.TZ = 'UTC';
 
+import type { Server } from 'node:http';
 import {
   ClassSerializerInterceptor,
   Logger,
@@ -128,7 +129,7 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = configService.get<number>('PORT', 3000);
-  const server = await app.listen(port);
+  const server = (await app.listen(port)) as Server;
 
   bootstrapLogger.log(`Application is running on port ${port}`);
   bootstrapLogger.log(
@@ -137,13 +138,15 @@ async function bootstrap() {
   bootstrapLogger.log(`TZ: ${configService.get('TZ', 'UTC')}`);
 
   // Graceful shutdown on SIGTERM (container restarts, PM2 reloads)
-  process.on('SIGTERM', async () => {
-    bootstrapLogger.log('SIGTERM received. Shutting down gracefully...');
-    await app.close();
-    server.close(() => {
-      bootstrapLogger.log('HTTP server closed.');
-      process.exit(0);
-    });
+  process.on('SIGTERM', () => {
+    void (async () => {
+      bootstrapLogger.log('SIGTERM received. Shutting down gracefully...');
+      await app.close();
+      server.close(() => {
+        bootstrapLogger.log('HTTP server closed.');
+        process.exit(0);
+      });
+    })();
   });
 
   // Catch async errors that escape NestJS request scope (queue processors, scheduled jobs, etc.)
@@ -160,4 +163,4 @@ async function bootstrap() {
     process.exit(1);
   });
 }
-bootstrap();
+void bootstrap();

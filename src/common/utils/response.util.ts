@@ -1,9 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
-import {
-  ApiResponse,
-  ResponseMeta,
-  ErrorResponse,
-} from '../interfaces/api-response.interface';
+import { ApiResponse, ResponseMeta, ErrorResponse } from '../interfaces';
 import { nowIso } from './date-time.util';
 
 export class ResponseUtil {

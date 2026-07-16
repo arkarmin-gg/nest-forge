@@ -1,5 +1,5 @@
-import { Admin } from 'src/modules/admin';
-import { User } from 'src/modules/user';
+import type { Admin } from 'src/modules/admin';
+import type { User } from 'src/modules/user';
 
 type StrippedAdmin = Omit<Admin, 'password' | 'hashPassword'>;
 type StrippedUser = Omit<User, 'password' | 'hashPassword'>;
@@ -14,7 +14,7 @@ export interface RequestWithUser extends Request {
   user: AuthenticatedUser;
 }
 
-export type AdminJwtPayload = {
+type AdminJwtPayload = {
   sub: string;
   subjectType: 'ADMIN';
   adminId: string;
@@ -23,7 +23,7 @@ export type AdminJwtPayload = {
   exp?: number;
 };
 
-export type UserJwtPayload = {
+type UserJwtPayload = {
   sub: string;
   subjectType: 'USER';
   userId: string;

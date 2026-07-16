@@ -1,18 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, Repository } from 'typeorm';
-import {
-  OtpRecord,
-  OtpPurpose,
-  OtpStatus,
-} from '../entities/otp-record.entity';
-import {
-  addMinutes,
-  isExpired,
-  OTP_TTL_MINUTES,
-} from 'src/common/utils/date-time.util';
-import { sha256Hex } from 'src/common/utils/hash.util';
 import { Cron } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { addMinutes, isExpired, OTP_TTL_MINUTES } from 'src/common/utils';
+import { sha256Hex } from 'src/common/utils';
+import { Brackets, In, LessThan, Repository } from 'typeorm';
+import { OtpPurpose } from '../constants/otp-purpose.enum';
+import { OtpStatus } from '../constants/otp-status.enum';
+import { OtpRecord } from '../entities/otp-record.entity';
 
 @Injectable()
 export class OtpService {
@@ -88,30 +82,27 @@ export class OtpService {
     });
   }
 
-  /**
-   * Tries subjectId as userId first, then adminId. Used when the caller
-   * doesn't know whether the subject is a User or Admin.
-   */
-  async findPendingByAnySubject(
+  async findPendingOTPByAnySubject(
     subjectId: string,
     purpose: OtpPurpose,
   ): Promise<OtpRecord | null> {
-    // codeHash is `select: false`; re-select it because verify() compares it.
-    const byUser = await this.otpRecordRepository
-      .createQueryBuilder('otp')
-      .addSelect('otp.codeHash')
-      .where('otp.userId = :subjectId', { subjectId })
-      .andWhere('otp.purpose = :purpose', { purpose })
-      .andWhere('otp.status = :status', { status: OtpStatus.PENDING })
-      .getOne();
-    if (byUser) return byUser;
-
     return this.otpRecordRepository
       .createQueryBuilder('otp')
       .addSelect('otp.codeHash')
-      .where('otp.adminId = :subjectId', { subjectId })
+      .where(
+        new Brackets((qb) => {
+          qb.where('otp.userId = :subjectId', { subjectId }).orWhere(
+            'otp.adminId = :subjectId',
+            { subjectId },
+          );
+        }),
+      )
       .andWhere('otp.purpose = :purpose', { purpose })
-      .andWhere('otp.status = :status', { status: OtpStatus.PENDING })
+      .andWhere('otp.status = :status', {
+        status: OtpStatus.PENDING,
+      })
+      .orderBy('otp.createdAt', 'DESC')
+      .addOrderBy('otp.id', 'DESC')
       .getOne();
   }
 
@@ -139,10 +130,6 @@ export class OtpService {
     await this.otpRecordRepository.save(record);
   }
 
-  /**
-   * Non-throwing login code validation. Returns false on any failure,
-   * marks the record as USED on success. Used for 2FA login challenge.
-   */
   async validateLoginCode(opts: {
     adminId: string;
     purpose: OtpPurpose;
@@ -150,7 +137,6 @@ export class OtpService {
   }): Promise<boolean> {
     const codeHash = sha256Hex(opts.code);
 
-    // codeHash is `select: false`; re-select it because it is compared below.
     const record = await this.otpRecordRepository
       .createQueryBuilder('otp')
       .addSelect('otp.codeHash')
@@ -186,11 +172,6 @@ export class OtpService {
     return true;
   }
 
-  /**
-   * Verifies an SMS-based OTP where the actual code check is delegated to
-   * an external SMS provider via verifyFn. Handles all expiry/attempt logic
-   * and marks the record VERIFIED on success.
-   */
   async verifySmsOtp(
     opts: { userId?: string; adminId?: string; purpose: OtpPurpose },
     code: string,

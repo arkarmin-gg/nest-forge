@@ -1,10 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Request } from 'express';
-import { Admin } from 'src/modules/admin';
-import { User } from 'src/modules/user';
+import type { Admin } from 'src/modules/admin';
+import type { User } from 'src/modules/user';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { AuthenticatedUser } from '../interfaces/user.interface';
+import type { AuthenticatedUser } from '../interfaces/user.interface';
 import { AdminAuthService } from './admin-auth.service';
 import { UserAuthService } from './user-auth.service';
 

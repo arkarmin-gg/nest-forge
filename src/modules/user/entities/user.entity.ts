@@ -1,6 +1,6 @@
 import { Exclude } from 'class-transformer';
-import { BaseEntity } from 'src/common/entities/base.entity';
-import { hashPasswordIfNeeded } from 'src/common/utils/password-hash.util';
+import { SoftDeletableEntity } from 'src/common/entities';
+import { hashPasswordIfNeeded } from 'src/common/utils';
 import { RefreshToken } from 'src/modules/auth/entities/refresh-token.entity';
 import { OtpRecord } from 'src/modules/otp/entities/otp-record.entity';
 import {
@@ -11,38 +11,22 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
-
-export const LoginProvider = {
-  SMS: 'SMS',
-  GOOGLE: 'GOOGLE',
-  APPLE: 'APPLE',
-} as const;
-
-export type LoginProvider = (typeof LoginProvider)[keyof typeof LoginProvider];
-
-export const UserRegistrationStage = {
-  OTP_VERIFIED: 'OTP_VERIFIED',
-  PASSWORD_SET: 'PASSWORD_SET',
-  COMPLETED: 'COMPLETED',
-} as const;
-
-export type UserRegistrationStage =
-  (typeof UserRegistrationStage)[keyof typeof UserRegistrationStage];
+import { LoginProvider } from '../constants/login-provider.enum';
 
 @Entity('users')
 @Index('UQ_users_phone_active', ['phone'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
 @Index('UQ_users_googleId_active', ['googleId'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
 @Index('UQ_users_appleId_active', ['appleId'], {
   unique: true,
-  where: '"deletedAt" IS NULL',
+  where: '"deleted_at" IS NULL',
 })
-export class User extends BaseEntity {
+export class User extends SoftDeletableEntity {
   @Index()
   @Column({ nullable: true })
   email!: string;
@@ -63,26 +47,7 @@ export class User extends BaseEntity {
   isBanned!: boolean;
 
   @Column({ nullable: true })
-  profileImageUrl!: string;
-
-  @Column({ nullable: true })
-  dateOfBirth!: string;
-
-  @Column({ nullable: true })
-  gender?: string;
-
-  @Column({ type: 'varchar', nullable: true })
-  preferLanguage?: string;
-
-  @Column({
-    type: 'enum',
-    enum: UserRegistrationStage,
-    default: UserRegistrationStage.OTP_VERIFIED,
-  })
-  registrationStage!: UserRegistrationStage;
-
-  @Column({ type: 'varchar', nullable: true })
-  fcmToken?: string | null;
+  profileImageKey!: string;
 
   @Column({ type: 'timestamptz', nullable: true })
   lastLoginAt?: Date;

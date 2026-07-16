@@ -8,7 +8,7 @@ import { fromZonedTime } from 'date-fns-tz';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const MYANMAR_TZ = 'Asia/Yangon'; // UTC+6:30, no DST
+const MYANMAR_TZ = 'Asia/Yangon'; // UTC+6:30, no DST
 
 export const OTP_TTL_MINUTES = 10;
 export const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -63,16 +63,6 @@ export function isExpired(expiresAt: Date | null | undefined): boolean {
 
 // ─── Date range parsing ───────────────────────────────────────────────────────
 
-/**
- * Parses a date string for use as the START of a filter range.
- *
- * - If the string contains timezone info (ISO 8601 with offset or Z), it is
- *   parsed as-is and converted to UTC.
- * - If it is a bare date ("2025-01-15"), it is interpreted as midnight at the
- *   START of that day in Myanmar local time, then converted to UTC.
- *
- * Use with TypeORM: `Between(parseRangeStart(dto.startDate), parseRangeEnd(dto.endDate))`
- */
 export function parseRangeStart(dateStr: string): Date {
   if (hasTimezoneInfo(dateStr)) {
     return new Date(dateStr);
@@ -80,21 +70,12 @@ export function parseRangeStart(dateStr: string): Date {
   return fromZonedTime(`${dateStr}T00:00:00`, MYANMAR_TZ);
 }
 
-/**
- * Parses a date string for use as the END of a filter range.
- *
- * - If the string contains timezone info, it is parsed as-is and converted to UTC.
- * - If it is a bare date ("2025-01-15"), it is interpreted as 23:59:59.999 at the
- *   END of that day in Myanmar local time, then converted to UTC.
- */
 export function parseRangeEnd(dateStr: string): Date {
   if (hasTimezoneInfo(dateStr)) {
     return new Date(dateStr);
   }
   return fromZonedTime(`${dateStr}T23:59:59.999`, MYANMAR_TZ);
 }
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function hasTimezoneInfo(dateStr: string): boolean {
   return (

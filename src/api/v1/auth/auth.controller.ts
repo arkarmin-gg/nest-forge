@@ -14,37 +14,31 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
-import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
-import { RequestTimeout } from 'src/common/decorators/request-timeout.decorator';
-import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
+import { ResolvePresignedUrls } from 'src/common/decorators';
+import { RequestTimeout } from 'src/common/decorators';
+import { imageInterceptorOptions } from 'src/common/config';
 import {
   AdminAuthService,
   AdminLoginDto,
-  AuthenticatedUser,
   AuthProfileService,
+  AuthenticatedUser,
   ChangePasswordDto,
   CurrentUser,
-  DisableTwoFactorDto,
-  EnableTwoFactorDto,
   ForgotPasswordSendOTPDto,
+  OAuthLoginPayload,
   PasswordResetService,
   Public,
   RefreshTokenDto,
   ResetPasswordDto,
   TokenService,
-  TwoFactorService,
   UpdateProfileDto,
-  UserAppleLoginDto,
   UserAuthService,
   UserForgotPasswordSendOTPDto,
-  UserGoogleLoginDto,
   UserLoginDto,
-  UserRegisterAccountSetupDto,
   UserRegisterOTPRequestDto,
   UserRegisterOTPVerifyDto,
   UserRegisterPasswordSetupDto,
   VerifyPasswordResetOTPCodeDto,
-  VerifyTwoFactorDto,
 } from 'src/modules/auth/api';
 import { LogAction, LogActivity } from 'src/modules/log/api';
 
@@ -56,7 +50,6 @@ export class AuthController {
     private readonly authProfileService: AuthProfileService,
     private readonly tokenService: TokenService,
     private readonly passwordResetService: PasswordResetService,
-    private readonly twoFactorService: TwoFactorService,
   ) {}
 
   private serializeDate(value: Date | string | null | undefined) {
@@ -92,31 +85,20 @@ export class AuthController {
   }
 
   @Public()
-  @Post('user/login/google')
+  @Post('user/login/oauth')
   @HttpCode(200)
   @RequestTimeout(30_000)
-  async userGoogleLogin(
-    @Body() dto: UserGoogleLoginDto,
+  async userOauthLogin(
+    @Body() dto: OAuthLoginPayload,
     @Req() request: Request,
   ) {
-    return this.userAuthService.userGoogleLogin(dto, request);
-  }
-
-  @Public()
-  @Post('user/login/apple')
-  @HttpCode(200)
-  @RequestTimeout(30_000)
-  async userAppleLogin(
-    @Body() dto: UserAppleLoginDto,
-    @Req() request: Request,
-  ) {
-    return this.userAuthService.userAppleLogin(dto, request);
+    return this.userAuthService.handleOAuthLogin(dto, request);
   }
 
   @Public()
   @Post('register/otp')
   @HttpCode(200)
-  @Throttle({ default: { limit: 3, ttl: 900_000 } })
+  @Throttle({ default: { limit: 20, ttl: 900_000 } })
   async userRegisterOTPRequest(@Body() dto: UserRegisterOTPRequestDto) {
     return this.userAuthService.userRegisterOTPRequest(dto);
   }
@@ -131,23 +113,11 @@ export class AuthController {
   @Public()
   @Post('register/password')
   @HttpCode(200)
-  async userRegisterPasswordSetup(@Body() dto: UserRegisterPasswordSetupDto) {
-    return this.userAuthService.userRegisterPasswordSetup(dto);
-  }
-
-  @Public()
-  @Post('register')
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
-  @HttpCode(200)
-  @RequestTimeout(30_000)
-  async userRegisterAccountSetup(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dto: UserRegisterAccountSetupDto,
+  async userRegisterPasswordSetup(
+    @Body() dto: UserRegisterPasswordSetupDto,
     @Req() request: Request,
   ) {
-    return this.userAuthService.userRegisterAccountSetup(dto, file, request);
+    return this.userAuthService.userRegisterPasswordSetup(dto, request);
   }
 
   @Public()
@@ -174,7 +144,7 @@ export class AuthController {
   }
 
   @Get('me')
-  @ResolvePresignedUrls('profileImageUrl')
+  @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.serializeProfile(user);
   }
@@ -187,9 +157,7 @@ export class AuthController {
     getResourceId: (_, req) =>
       (req as unknown as { user?: { id?: string } }).user?.id,
   })
-  @UseInterceptors(
-    FileInterceptor('profileImage', profileImageInterceptorOptions),
-  )
+  @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   @HttpCode(200)
   @RequestTimeout(30_000)
   async updateProfile(
@@ -232,63 +200,6 @@ export class AuthController {
     @Req() request: Request,
   ) {
     await this.authProfileService.deleteProfile(user, request);
-  }
-
-  @Public()
-  @Post('2fa/verify')
-  @HttpCode(200)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  async verifyTwoFactor(
-    @Body() dto: VerifyTwoFactorDto,
-    @Req() request: Request,
-  ) {
-    return this.adminAuthService.verifyTwoFactorAndLogin(
-      dto.userId,
-      dto.code,
-      request,
-    );
-  }
-
-  @Post('2fa/enable')
-  @LogActivity({
-    action: LogAction.ENABLE_TWO_FACTOR,
-    description: 'Two-factor authentication enable requested',
-    resourceType: 'Auth',
-    getResourceId: (_, req) =>
-      (req as unknown as { user?: { id?: string } }).user?.id,
-  })
-  @HttpCode(200)
-  async enableTwoFactor(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: EnableTwoFactorDto,
-  ) {
-    await this.twoFactorService.enableTwoFactor(user.id, dto.email);
-  }
-
-  @Public()
-  @Post('2fa/enable/confirm')
-  @HttpCode(200)
-  async enableTwoFactorVerify(
-    @Body() dto: VerifyTwoFactorDto,
-    @Req() request: Request,
-  ) {
-    return this.twoFactorService.verifyTwoFactor(dto.userId, dto.code, request);
-  }
-
-  @Post('2fa/disable')
-  @LogActivity({
-    action: LogAction.DISABLE_TWO_FACTOR,
-    description: 'Two-factor authentication disabled',
-    resourceType: 'Auth',
-    getResourceId: (_, req) =>
-      (req as unknown as { user?: { id?: string } }).user?.id,
-  })
-  @HttpCode(200)
-  async disableTwoFactor(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: DisableTwoFactorDto,
-  ) {
-    await this.twoFactorService.disableTwoFactor(user.id, dto.password);
   }
 
   @Public()

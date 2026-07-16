@@ -2,11 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ModuleEntity } from '../entities/module.entity';
-import {
-  ActionType,
-  Permission,
-  PermissionModule,
-} from '../entities/permission.entity';
+import { Permission } from '../entities/permission.entity';
+import { ActionType } from '../constants/action-type.enum';
+import { PermissionModule } from '../constants/permission-module.enum';
 import { RolePermission } from '../entities/role-permission.entity';
 import { Role } from '../entities/role.entity';
 

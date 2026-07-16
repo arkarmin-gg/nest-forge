@@ -13,7 +13,7 @@ The project grew organically with NestJS modules providing loose boundaries, but
 - No explicit public API contracts per module — consumers import from deep internal paths.
 - Cross-module repository access: `AdminModule` registers `Role` outside the role context; `AuthModule` injects `User` and `Admin` repositories directly.
 - `OtpModule` re-exports `TypeOrmModule` so consumers can access `OtpRecord` repository directly.
-- OTP lifecycle logic (create, verify, expire, mark-used) duplicated in `TwoFactorService` and `PasswordResetService` instead of owned by `OtpService`.
+- OTP lifecycle logic (create, verify, expire, mark-used) duplicated in `PasswordResetService` instead of owned by `OtpService`.
 - `ActivityLogModule` imported directly by `AuthModule` and `SettingModule` as a hard dependency, creating tight coupling across domain modules.
 
 ## Decision
@@ -28,6 +28,7 @@ src/
 │   ├── auth/
 │   ├── user/
 │   ├── admin/
+│   ├── role/
 │   ├── otp/
 │   ├── log/
 │   └── setting/
@@ -76,7 +77,7 @@ Role assignment deletion checks are orchestrated at the application boundary. Fo
 
 ### 4. OTP lifecycle owned exclusively by OtpService
 
-All OTP create/verify/expire/invalidate logic moves into `OtpService`. `TwoFactorService` and `PasswordResetService` call `OtpService` methods only.
+All OTP create/verify/expire/invalidate logic moves into `OtpService`. `PasswordResetService` calls `OtpService` methods only.
 
 ### 5. Event-driven cross-cutting concerns
 

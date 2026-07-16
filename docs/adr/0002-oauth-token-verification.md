@@ -15,7 +15,7 @@ Replace `jwtService.decode()` with cryptographic verification for each provider:
 
 Both methods throw if verification fails, so no manual error branching is needed.
 
-Additionally, extract a shared private `handleOAuthLogin(provider, providerId, email, name?, fcmToken, request)` method that both `userGoogleLogin` and `userAppleLogin` delegate to, eliminating structural duplication.
+Additionally, extract a shared private `handleOAuthLogin(provider, providerId, email, name?, request)` method that both `userGoogleLogin` and `userAppleLogin` delegate to, eliminating structural duplication.
 
 ## Consequences
 
