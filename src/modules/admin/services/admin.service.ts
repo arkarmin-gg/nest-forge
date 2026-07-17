@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FileUploadService } from 'src/common/services';
-import { parseRangeEnd, parseRangeStart } from 'src/common/utils';
+import {
+  parseRangeEnd,
+  parseRangeStart,
+  resolveSortField,
+} from 'src/common/utils';
 import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
 import { RoleService } from 'src/modules/role/api';
 import { DeepPartial, Repository } from 'typeorm';
@@ -14,6 +18,8 @@ import { CreateAdminDto } from '../dto/create-admin.dto';
 import { FilterAdminDto } from '../dto/filter-admin.dto';
 import { UpdateAdminDto } from '../dto/update-admin.dto';
 import { Admin } from '../entities/admin.entity';
+
+const VALID_SORT_FIELDS: (keyof Admin)[] = ['createdAt'];
 
 @Injectable()
 export class AdminService {
@@ -72,10 +78,16 @@ export class AdminService {
     const { getAll, limit, page } = filter;
     const skip = (page - 1) * limit;
 
+    const orderField = resolveSortField(
+      filter.sortBy,
+      VALID_SORT_FIELDS,
+      'createdAt',
+    );
+
     const qb = this.adminRepository
       .createQueryBuilder('admin')
       .leftJoinAndSelect('admin.role', 'role')
-      .orderBy('admin.createdAt', 'DESC');
+      .orderBy(`admin.${orderField}`, filter.sortOrder ?? 'DESC');
 
     if (!getAll) {
       qb.skip(skip).take(limit);

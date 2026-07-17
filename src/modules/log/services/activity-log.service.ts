@@ -1,12 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  Between,
-  FindManyOptions,
-  FindOptionsWhere,
-  Repository,
-} from 'typeorm';
+import { Repository } from 'typeorm';
 import { ActivityLog } from '../entities/activity-log.entity';
 import { FilterActivityLogDto } from '../dto/filter-activity-log.dto';
 import { CreateActivityLogData } from '../interfaces/create-activity-log.interface';
@@ -16,6 +11,7 @@ import {
   parseRangeEnd,
   subtractDays,
   LOG_RETENTION_DAYS,
+  resolveSortField,
 } from 'src/common/utils';
 
 const VALID_SORT_FIELDS: (keyof ActivityLog)[] = [
@@ -42,6 +38,7 @@ export class ActivityLogService {
     filterDto: FilterActivityLogDto,
   ): Promise<{ items: ActivityLog[]; total: number }> {
     const {
+      search,
       userId,
       action,
       resourceType,
@@ -52,46 +49,58 @@ export class ActivityLogService {
       status,
       startDate,
       endDate,
-      sortBy = 'createdAt',
+      sortBy,
       sortOrder = 'DESC',
       page = 1,
       limit = 10,
       getAll = false,
     } = filterDto;
 
-    const where: FindOptionsWhere<ActivityLog> = {};
+    const orderField = resolveSortField(sortBy, VALID_SORT_FIELDS, 'createdAt');
 
-    if (userId) where.userId = userId;
-    if (action) where.action = action;
-    if (resourceType) where.resourceType = resourceType;
-    if (resourceId) where.resourceId = resourceId;
-    if (ipAddress) where.ipAddress = ipAddress;
-    if (device) where.device = device;
-    if (location) where.location = location;
-    if (status) where.status = status;
+    const qb = this.activityLogRepository
+      .createQueryBuilder('activityLog')
+      .leftJoinAndSelect('activityLog.user', 'user')
+      .orderBy(`activityLog.${orderField}`, sortOrder);
 
-    if (startDate && endDate) {
-      where.createdAt = Between(
-        parseRangeStart(startDate),
-        parseRangeEnd(endDate),
-      );
-    } else if (startDate) {
-      where.createdAt = Between(parseRangeStart(startDate), nowUtc());
+    if (!getAll) {
+      qb.skip((page - 1) * limit).take(limit);
     }
 
-    const orderField = VALID_SORT_FIELDS.includes(sortBy as keyof ActivityLog)
-      ? (sortBy as keyof ActivityLog)
-      : 'createdAt';
+    if (search) {
+      qb.andWhere(
+        '(activityLog.resourceType ILIKE :term OR activityLog.ipAddress ILIKE :term OR activityLog.device ILIKE :term OR activityLog.location ILIKE :term)',
+        { term: `%${search}%` },
+      );
+    }
 
-    const options: FindManyOptions<ActivityLog> = {
-      where,
-      relations: ['user'],
-      order: { [orderField]: sortOrder },
-      ...(getAll ? {} : { skip: (page - 1) * limit, take: limit }),
-    };
+    if (userId) qb.andWhere('activityLog.userId = :userId', { userId });
+    if (action) qb.andWhere('activityLog.action = :action', { action });
+    if (resourceType)
+      qb.andWhere('activityLog.resourceType = :resourceType', {
+        resourceType,
+      });
+    if (resourceId)
+      qb.andWhere('activityLog.resourceId = :resourceId', { resourceId });
+    if (ipAddress)
+      qb.andWhere('activityLog.ipAddress = :ipAddress', { ipAddress });
+    if (device) qb.andWhere('activityLog.device = :device', { device });
+    if (location) qb.andWhere('activityLog.location = :location', { location });
+    if (status) qb.andWhere('activityLog.status = :status', { status });
 
-    const [items, total] =
-      await this.activityLogRepository.findAndCount(options);
+    if (startDate && endDate) {
+      qb.andWhere('activityLog.createdAt BETWEEN :startDate AND :endDate', {
+        startDate: parseRangeStart(startDate),
+        endDate: parseRangeEnd(endDate),
+      });
+    } else if (startDate) {
+      qb.andWhere('activityLog.createdAt BETWEEN :startDate AND :now', {
+        startDate: parseRangeStart(startDate),
+        now: nowUtc(),
+      });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
     return { items, total };
   }
 

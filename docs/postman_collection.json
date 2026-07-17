@@ -1,0 +1,2620 @@
+{
+  "info": {
+    "_postman_id": "b3c6a091-8c5a-4ff3-8d13-nestforgeapi",
+    "name": "nest-forge API - Complete Current Endpoints",
+    "description": "Generated from NestJS controllers and DTOs. Uses /api/v1 for versioned routes and /api/health for health. Login requests capture tokens into collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminAccessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'Accept', value: 'application/json' });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseApiUrl",
+      "value": "http://localhost:3000/api"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com"
+    },
+    {
+      "key": "adminPassword",
+      "value": "passwordD123!@#"
+    },
+    {
+      "key": "adminAccessToken",
+      "value": ""
+    },
+    {
+      "key": "adminRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "adminId",
+      "value": ""
+    },
+    {
+      "key": "userPhone",
+      "value": "+959123456789"
+    },
+    {
+      "key": "userPassword",
+      "value": "Password123"
+    },
+    {
+      "key": "userFullName",
+      "value": "Test User"
+    },
+    {
+      "key": "userEmail",
+      "value": "user@example.com"
+    },
+    {
+      "key": "userAccessToken",
+      "value": ""
+    },
+    {
+      "key": "userRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "registrationRequestId",
+      "value": ""
+    },
+    {
+      "key": "otpCode",
+      "value": "123456"
+    },
+    {
+      "key": "resetAccessToken",
+      "value": ""
+    },
+    {
+      "key": "roleId",
+      "value": ""
+    },
+    {
+      "key": "permissionId",
+      "value": ""
+    },
+    {
+      "key": "permissionIdsJson",
+      "value": "[]"
+    },
+    {
+      "key": "targetAdminId",
+      "value": ""
+    },
+    {
+      "key": "targetUserId",
+      "value": ""
+    },
+    {
+      "key": "profileImagePath",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /api/health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseApiUrl}}/health",
+              "host": [
+                "{{baseApiUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Unversioned public health endpoint.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Admin login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.accessToken) pm.collectionVariables.set('adminAccessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('adminRefreshToken', data.refreshToken);",
+                  "  if (data.user && data.user.id) pm.collectionVariables.set('adminId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/admin/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "login"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "User login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.accessToken) pm.collectionVariables.set('userAccessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('userRefreshToken', data.refreshToken);",
+                  "  if (data.user && data.user.id) pm.collectionVariables.set('userId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "user",
+                "login"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{userPhone}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "User OAuth login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.accessToken) pm.collectionVariables.set('userAccessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('userRefreshToken', data.refreshToken);",
+                  "  if (data.user && data.user.id) pm.collectionVariables.set('userId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/login/oauth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "user",
+                "login",
+                "oauth"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"GOOGLE\",\n  \"providerId\": \"google-provider-id-123\",\n  \"email\": \"{{userEmail}}\",\n  \"phone\": \"{{userPhone}}\",\n  \"fullName\": \"{{userFullName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register OTP request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) { const data = (pm.response.json().data || pm.response.json()); if (data.requestId) pm.collectionVariables.set('registrationRequestId', data.requestId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                "otp"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{userPhone}}\",\n  \"fullName\": \"{{userFullName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register OTP verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{userPhone}}\",\n  \"otp\": \"{{otpCode}}\",\n  \"requestId\": \"{{registrationRequestId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register password setup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.accessToken) pm.collectionVariables.set('userAccessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('userRefreshToken', data.refreshToken);",
+                  "  if (data.user && data.user.id) pm.collectionVariables.set('userId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                "password"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{userPhone}}\",\n  \"password\": \"{{userPassword}}\",\n  \"confirmPassword\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Refresh access token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) { const data = pm.response.json().data || pm.response.json(); if (data.accessToken) pm.collectionVariables.set('adminAccessToken', data.accessToken); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Logout current subject",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Revokes the supplied refresh token for the authenticated subject.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get current profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update current profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Multipart profile update. Enable profileImage and set profileImagePath to upload a file.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fullName",
+                  "value": "Updated Admin",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImageUrl",
+                  "value": "",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImage",
+                  "value": "{{profileImagePath}}",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Change current password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "password"
+              ]
+            },
+            "description": "Uses the same password by default to avoid changing seeded credentials.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{adminPassword}}\",\n  \"newPassword\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete current account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Destructive: deletes the authenticated account.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin forgot password OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) { const data = pm.response.json().data || pm.response.json(); if (data.userId) pm.collectionVariables.set('adminId', data.userId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/admin/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "forgot-password"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Admin forgot password verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) { const data = pm.response.json().data || pm.response.json(); if (data.accessToken) pm.collectionVariables.set('resetAccessToken', data.accessToken); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/admin/forgot-password/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "forgot-password",
+                "verify"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{adminId}}\",\n  \"code\": \"{{otpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Admin reset password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/admin/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "reset-password"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accessToken\": \"{{resetAccessToken}}\",\n  \"newPassword\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "User forgot password OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) { const data = pm.response.json().data || pm.response.json(); if (data.userId) pm.collectionVariables.set('userId', data.userId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "user",
+                "forgot-password"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{userPhone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "User forgot password verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) { const data = pm.response.json().data || pm.response.json(); if (data.accessToken) pm.collectionVariables.set('resetAccessToken', data.accessToken); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/forgot-password/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "user",
+                "forgot-password",
+                "verify"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"code\": \"{{otpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "User reset password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "user",
+                "reset-password"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accessToken\": \"{{resetAccessToken}}\",\n  \"newPassword\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "App User Self-Service",
+      "item": [
+        {
+          "name": "Get app /me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/app/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "app",
+                "me"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update app /me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/app/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "app",
+                "me"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fullName",
+                  "value": "{{userFullName}} Updated",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImageUrl",
+                  "value": "",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImage",
+                  "value": "{{profileImagePath}}",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Admins",
+      "item": [
+        {
+          "name": "Create admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.id) pm.collectionVariables.set('targetAdminId', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fullName",
+                  "value": "Test Admin",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "email",
+                  "value": "test.admin@example.com",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "password",
+                  "value": "Password123",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "roleId",
+                  "value": "{{roleId}}",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "isBanned",
+                  "value": "false",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImageUrl",
+                  "value": "",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImage",
+                  "value": "{{profileImagePath}}",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List admins",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  const items = Array.isArray(data) ? data : data.items;",
+                  "  if (Array.isArray(items) && items[0] && items[0].id) pm.collectionVariables.set('targetAdminId', items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": false
+                },
+                {
+                  "key": "getAll",
+                  "value": "false",
+                  "disabled": false
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "isBanned",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "roleId",
+                  "value": "{{roleId}}",
+                  "disabled": false
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "disabled": false
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get admin by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{targetAdminId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins",
+                "{{targetAdminId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{targetAdminId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins",
+                "{{targetAdminId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fullName",
+                  "value": "Test Admin Updated",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "email",
+                  "value": "test.admin.updated@example.com",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "roleId",
+                  "value": "{{roleId}}",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "isBanned",
+                  "value": "false",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImage",
+                  "value": "{{profileImagePath}}",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{targetAdminId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins",
+                "{{targetAdminId}}"
+              ]
+            },
+            "description": "Destructive: soft-deletes targetAdminId.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Users",
+      "item": [
+        {
+          "name": "Create user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.id) pm.collectionVariables.set('targetUserId', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fullName",
+                  "value": "Managed User",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "email",
+                  "value": "managed.user@example.com",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "phone",
+                  "value": "+959987654321",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "password",
+                  "value": "Password123",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "isBanned",
+                  "value": "false",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImageUrl",
+                  "value": "",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImage",
+                  "value": "{{profileImagePath}}",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  const items = Array.isArray(data) ? data : data.items;",
+                  "  if (Array.isArray(items) && items[0] && items[0].id) pm.collectionVariables.set('targetUserId', items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": false
+                },
+                {
+                  "key": "getAll",
+                  "value": "false",
+                  "disabled": false
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "isBanned",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "disabled": false
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get user by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{targetUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{targetUserId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{targetUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{targetUserId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "fullName",
+                  "value": "Managed User Updated",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "email",
+                  "value": "managed.user.updated@example.com",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "phone",
+                  "value": "+959987654321",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "password",
+                  "value": "Password123",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "isBanned",
+                  "value": "false",
+                  "type": "text",
+                  "disabled": false
+                },
+                {
+                  "key": "profileImage",
+                  "value": "{{profileImagePath}}",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{targetUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{targetUserId}}"
+              ]
+            },
+            "description": "Destructive: soft-deletes targetUserId.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Roles & Permissions",
+      "item": [
+        {
+          "name": "List permissions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  const permissions = [];",
+                  "  const walk = (value) => {",
+                  "    if (Array.isArray(value)) return value.forEach(walk);",
+                  "    if (value && typeof value === 'object') {",
+                  "      if (value.id && value.action) permissions.push(value.id);",
+                  "      Object.values(value).forEach(walk);",
+                  "    }",
+                  "  };",
+                  "  walk(data);",
+                  "  if (permissions[0]) pm.collectionVariables.set('permissionId', permissions[0]);",
+                  "  if (permissions.length) pm.collectionVariables.set('permissionIdsJson', JSON.stringify(permissions.slice(0, 4)));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/permissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "permissions"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  const items = Array.isArray(data) ? data : data.items;",
+                  "  if (Array.isArray(items) && items[0] && items[0].id) pm.collectionVariables.set('roleId', items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "roles"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": false
+                },
+                {
+                  "key": "getAll",
+                  "value": "false",
+                  "disabled": false
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "disabled": false
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get role by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/roles/{{roleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "roles",
+                "{{roleId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  const json = pm.response.json();",
+                  "  const data = json.data || json;",
+                  "  if (data.id) pm.collectionVariables.set('roleId', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "roles"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Test Role\",\n  \"description\": \"Created by Postman collection\",\n  \"rank\": 99,\n  \"permissionIds\": [\n    \"{{permissionId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/roles/{{roleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "roles",
+                "{{roleId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Test Role Updated\",\n  \"description\": \"Updated by Postman collection\",\n  \"rank\": 98,\n  \"permissionIds\": [\n    \"{{permissionId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/roles/{{roleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "roles",
+                "{{roleId}}"
+              ]
+            },
+            "description": "Destructive: deletes roleId. Do not point roleId at Super Admin.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Logs",
+      "item": [
+        {
+          "name": "List activity logs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/activity-logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "activity-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": false
+                },
+                {
+                  "key": "getAll",
+                  "value": "false",
+                  "disabled": false
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "resourceType",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "resourceId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "ipAddress",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "device",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "location",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "disabled": false
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List audit logs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": false
+                },
+                {
+                  "key": "getAll",
+                  "value": "false",
+                  "disabled": false
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "adminId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "entityName",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "entityId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "ipAddress",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "device",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "location",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "disabled": false
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Settings",
+      "item": [
+        {
+          "name": "Get SMTP settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/settings/smtp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "settings",
+                "smtp"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upsert SMTP settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "pm.test('response is JSON when body is present', function () { if (pm.response.text()) { pm.response.to.be.json; } });",
+                  "pm.test('standard envelope when successful', function () { if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) { const json = pm.response.json(); pm.expect(json).to.have.property('success'); pm.expect(json).to.have.property('data'); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/settings/smtp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "settings",
+                "smtp"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"smtpHost\": \"smtp.example.com\",\n  \"smtpPort\": 587,\n  \"smtpSecure\": false,\n  \"smtpUsername\": \"smtp-user\",\n  \"smtpPassword\": \"smtp-password\",\n  \"smtpFromEmail\": \"noreply@example.com\",\n  \"smtpFromName\": \"Nest Forge\",\n  \"smtpEnabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

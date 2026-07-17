@@ -1,0 +1,282 @@
+// nest-forge database ERD
+// Source of truth: TypeORM entities in src/modules/**/entities and
+// src/infrastructure/database/migrations/1784213162334-init.ts.
+
+Project nest_forge {
+  database_type: "PostgreSQL"
+  Note: '''
+    Modular monolith schema using TypeORM and SnakeNamingStrategy.
+
+    Most domain tables inherit id, created_at, and updated_at from BaseEntity.
+    Soft-delete tables also include deleted_at and enforce uniqueness through
+    partial unique indexes where deleted_at IS NULL.
+  '''
+}
+
+Enum action_type {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+}
+
+Enum login_provider {
+  SMS
+  GOOGLE
+  APPLE
+}
+
+Enum log_action {
+  LOGIN
+  LOGOUT
+  REGISTER
+  UPDATE_PROFILE
+  CHANGE_PASSWORD
+  FORGOT_PASSWORD_OTP
+  RESET_PASSWORD
+  DELETE_ACCOUNT
+  CREATE
+  UPDATE
+  DELETE
+}
+
+Enum log_status {
+  SUCCESS
+  FAILURE
+}
+
+Enum otp_purpose {
+  RESET_PASSWORD
+}
+
+Enum otp_status {
+  PENDING
+  VERIFIED
+  EXPIRED
+  USED
+}
+
+Table modules {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  name varchar [not null]
+  code varchar [not null, note: "Normalized from name using uppercase slug format when omitted."]
+  parent_id uuid
+
+  indexes {
+    deleted_at [name: "IDX_d233555396cba99afaab4868b6"]
+    code [unique, name: "UQ_modules_code_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
+Table permissions {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  module_id uuid [not null]
+  action varchar [not null, note: "Application enum: action_type."]
+
+  indexes {
+    deleted_at [name: "IDX_1ea42cae477fc1dc619a5cd280"]
+    module_id [name: "IDX_738f46bb9ac6ea356f1915835d"]
+    (module_id, action) [unique, name: "UQ_permissions_module_action_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
+Table role_permissions {
+  role_id uuid [pk, not null]
+  permission_id uuid [pk, not null]
+
+  indexes {
+    (role_id, permission_id) [unique, name: "IDX_25d24010f53bb80b78e412c965"]
+  }
+}
+
+Table roles {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  name varchar [not null]
+  description varchar
+  rank int [not null, default: 99, note: "Lower rank means higher privilege; 1 is superadmin."]
+
+  indexes {
+    deleted_at [name: "IDX_7fd0c79dc4e6083ddea850ac38"]
+    name [unique, name: "UQ_roles_name_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
+Table admins {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  full_name varchar [not null]
+  password varchar [note: "Stored hashed; excluded from default selects."]
+  email varchar [not null]
+  profile_image_key varchar
+  role_id uuid [not null]
+  is_banned boolean [not null, default: false]
+  last_login_at timestamptz
+  last_logout_at timestamptz
+
+  indexes {
+    deleted_at [name: "IDX_c6ef87dba2fe6e060a957fca9b"]
+    full_name [name: "IDX_4474a623b12e66592815dc8bba"]
+    role_id [name: "IDX_5733c73cd81c566a90cc4802f9"]
+    is_banned [name: "IDX_07972025d2d8847474f45962cc"]
+    email [unique, name: "UQ_admins_email_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
+Table refresh_tokens {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  token_hash text [not null, note: "SHA-256 hash of refresh token; plaintext is never stored."]
+  user_id uuid
+  admin_id uuid
+  expires_at timestamptz
+  is_revoked boolean [not null, default: false]
+
+  indexes {
+    user_id [name: "IDX_3ddc983c5f7bcf132fd8732c3f"]
+    admin_id [name: "IDX_ecd766716e82c2e0f1cf6cb628"]
+    expires_at [name: "IDX_ba3bd69c8ad1e799c0256e9e50"]
+    (admin_id, is_revoked) [name: "IDX_9de861562a968206b3dac37bb9"]
+    (user_id, is_revoked) [name: "IDX_14187aa4d2d58318c82c62c7ea"]
+  }
+
+  Note: "A token belongs to either a user or an admin. This invariant is enforced by application/domain logic, not by the current migration."
+}
+
+Table otp_records {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  user_id uuid
+  admin_id uuid
+  status varchar [not null, default: "PENDING", note: "Application enum: otp_status."]
+  purpose varchar [not null, note: "Application enum: otp_purpose."]
+  code_hash varchar [not null, note: "SHA-256 hash of one-time code; plaintext is never stored."]
+  expires_at timestamptz [not null]
+  request_id varchar
+  attempts int [not null, default: 0]
+  max_attempts int [not null, default: 3]
+
+  indexes {
+    user_id [name: "IDX_2f19c4c5f1e1a61aea6f587758"]
+    admin_id [name: "IDX_7ad64c886530ff1b4bf0357a4f"]
+    expires_at [name: "IDX_d72060b2501b9ed4cd62e7ebc6"]
+    (admin_id, purpose, status) [name: "IDX_e383daa23a6877fa31353a9fe9"]
+    (user_id, purpose, status) [name: "IDX_466fbbc290957f89c78e9d18b2"]
+  }
+
+  Note: "An OTP record may target a user or an admin. Current schema allows both nullable; ownership rules live in domain logic."
+}
+
+Table users {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  email varchar
+  full_name varchar
+  phone varchar [not null]
+  password varchar [note: "Stored hashed; excluded from default selects."]
+  is_banned boolean [not null, default: false]
+  profile_image_key varchar
+  last_login_at timestamptz
+  last_logout_at timestamptz
+  google_id varchar
+  apple_id varchar
+  login_provider varchar [note: "Application enum: login_provider."]
+
+  indexes {
+    deleted_at [name: "IDX_073999dfec9d14522f0cf58cd6"]
+    email [name: "IDX_97672ac88f789774dd47f7c8be"]
+    full_name [name: "IDX_0adc0a8834ea0f252e96d154de"]
+    is_banned [name: "IDX_828a06f7ee7c54015682a8ecf7"]
+    apple_id [unique, name: "UQ_users_appleId_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+    google_id [unique, name: "UQ_users_googleId_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+    phone [unique, name: "UQ_users_phone_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
+Table settings {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  key varchar [not null]
+  value jsonb [not null, default: `{}`]
+  description text
+
+  indexes {
+    deleted_at [name: "IDX_ebebfa479dbc6c92bfc07cbd54"]
+    key [unique, name: "UQ_settings_key_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
+Table audit_logs {
+  id serial [pk, not null, note: "Integer PK intentional for high-volume append-only log table."]
+  admin_id uuid
+  action varchar [not null, note: "Application enum: log_action."]
+  description text [not null]
+  entity_name varchar
+  entity_id varchar
+  old_value jsonb
+  new_value jsonb
+  ip_address varchar
+  user_agent varchar
+  device varchar
+  browser varchar
+  os varchar
+  location varchar
+  status varchar [not null, default: "SUCCESS", note: "Application enum: log_status."]
+  metadata jsonb
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (entity_name, entity_id) [name: "IDX_9ac4b82f0b0f68801024154d19"]
+    (admin_id, action, created_at) [name: "IDX_3dba8d7dfe897cf974a8d1c297"]
+  }
+}
+
+Table activity_logs {
+  id serial [pk, not null, note: "Integer PK intentional for high-volume append-only log table."]
+  user_id uuid [not null]
+  action varchar [not null, note: "Application enum: log_action."]
+  description text [not null]
+  resource_type varchar
+  resource_id varchar
+  ip_address varchar
+  user_agent varchar
+  device varchar
+  browser varchar
+  os varchar
+  location varchar
+  status varchar [not null, default: "SUCCESS", note: "Application enum: log_status."]
+  metadata jsonb
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, action, created_at) [name: "IDX_366035c36727bb87deda99e8a6"]
+  }
+}
+
+Ref: modules.parent_id > modules.id [delete: set null, update: no action]
+Ref: permissions.module_id > modules.id [delete: cascade, update: no action]
+Ref: role_permissions.role_id > roles.id [delete: cascade, update: no action]
+Ref: role_permissions.permission_id > permissions.id [delete: cascade, update: no action]
+Ref: admins.role_id > roles.id [delete: restrict, update: no action]
+Ref: refresh_tokens.user_id > users.id [delete: cascade, update: no action]
+Ref: refresh_tokens.admin_id > admins.id [delete: cascade, update: no action]
+Ref: otp_records.user_id > users.id [delete: cascade, update: no action]
+Ref: otp_records.admin_id > admins.id [delete: cascade, update: no action]
+Ref: audit_logs.admin_id > admins.id [delete: set null, update: no action]
+Ref: activity_logs.user_id > users.id [delete: cascade, update: no action]

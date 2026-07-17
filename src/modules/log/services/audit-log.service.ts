@@ -1,12 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  Between,
-  FindManyOptions,
-  FindOptionsWhere,
-  Repository,
-} from 'typeorm';
+import { Repository } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
 import { FilterAuditLogDto } from '../dto/filter-audit-log.dto';
 import { CreateAuditLogData } from '../interfaces/create-audit-log.interface';
@@ -16,6 +11,7 @@ import {
   parseRangeEnd,
   subtractDays,
   LOG_RETENTION_DAYS,
+  resolveSortField,
 } from 'src/common/utils';
 
 const VALID_SORT_FIELDS: (keyof AuditLog)[] = [
@@ -42,6 +38,7 @@ export class AuditLogService {
     filterDto: FilterAuditLogDto,
   ): Promise<{ items: AuditLog[]; total: number }> {
     const {
+      search,
       adminId,
       action,
       entityName,
@@ -52,45 +49,55 @@ export class AuditLogService {
       status,
       startDate,
       endDate,
-      sortBy = 'createdAt',
+      sortBy,
       sortOrder = 'DESC',
       page = 1,
       limit = 10,
       getAll = false,
     } = filterDto;
 
-    const where: FindOptionsWhere<AuditLog> = {};
+    const orderField = resolveSortField(sortBy, VALID_SORT_FIELDS, 'createdAt');
 
-    if (adminId) where.adminId = adminId;
-    if (action) where.action = action;
-    if (entityName) where.entityName = entityName;
-    if (entityId) where.entityId = entityId;
-    if (ipAddress) where.ipAddress = ipAddress;
-    if (device) where.device = device;
-    if (location) where.location = location;
-    if (status) where.status = status;
+    const qb = this.auditLogRepository
+      .createQueryBuilder('auditLog')
+      .leftJoinAndSelect('auditLog.admin', 'admin')
+      .orderBy(`auditLog.${orderField}`, sortOrder);
 
-    if (startDate && endDate) {
-      where.createdAt = Between(
-        parseRangeStart(startDate),
-        parseRangeEnd(endDate),
-      );
-    } else if (startDate) {
-      where.createdAt = Between(parseRangeStart(startDate), nowUtc());
+    if (!getAll) {
+      qb.skip((page - 1) * limit).take(limit);
     }
 
-    const orderField = VALID_SORT_FIELDS.includes(sortBy as keyof AuditLog)
-      ? (sortBy as keyof AuditLog)
-      : 'createdAt';
+    if (search) {
+      qb.andWhere(
+        '(auditLog.entityName ILIKE :term OR auditLog.ipAddress ILIKE :term OR auditLog.device ILIKE :term OR auditLog.location ILIKE :term)',
+        { term: `%${search}%` },
+      );
+    }
 
-    const options: FindManyOptions<AuditLog> = {
-      where,
-      relations: ['admin'],
-      order: { [orderField]: sortOrder },
-      ...(getAll ? {} : { skip: (page - 1) * limit, take: limit }),
-    };
+    if (adminId) qb.andWhere('auditLog.adminId = :adminId', { adminId });
+    if (action) qb.andWhere('auditLog.action = :action', { action });
+    if (entityName)
+      qb.andWhere('auditLog.entityName = :entityName', { entityName });
+    if (entityId) qb.andWhere('auditLog.entityId = :entityId', { entityId });
+    if (ipAddress)
+      qb.andWhere('auditLog.ipAddress = :ipAddress', { ipAddress });
+    if (device) qb.andWhere('auditLog.device = :device', { device });
+    if (location) qb.andWhere('auditLog.location = :location', { location });
+    if (status) qb.andWhere('auditLog.status = :status', { status });
 
-    const [items, total] = await this.auditLogRepository.findAndCount(options);
+    if (startDate && endDate) {
+      qb.andWhere('auditLog.createdAt BETWEEN :startDate AND :endDate', {
+        startDate: parseRangeStart(startDate),
+        endDate: parseRangeEnd(endDate),
+      });
+    } else if (startDate) {
+      qb.andWhere('auditLog.createdAt BETWEEN :startDate AND :now', {
+        startDate: parseRangeStart(startDate),
+        now: nowUtc(),
+      });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
     return { items, total };
   }
 

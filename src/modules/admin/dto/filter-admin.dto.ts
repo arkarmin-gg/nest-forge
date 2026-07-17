@@ -1,8 +1,8 @@
 import { IsOptional, IsString, IsBoolean, IsUUID } from 'class-validator';
-import { PaginationFilterDto } from 'src/common/dto';
+import { SortableFilterDto } from 'src/common/dto';
 import { ToBoolean } from 'src/common/decorators';
 
-export class FilterAdminDto extends PaginationFilterDto {
+export class FilterAdminDto extends SortableFilterDto {
   @IsOptional()
   @IsString({ message: 'Search must be a string' })
   search?: string;

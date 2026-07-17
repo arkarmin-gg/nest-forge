@@ -6,4 +6,5 @@ export * from './password-hash.util';
 export * from './request-context.util';
 export * from './response.util';
 export * from './s3-url.util';
+export * from './sort.util';
 export * from './user-agent.util';

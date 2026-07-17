@@ -6,13 +6,17 @@ import {
 } from '@nestjs/common';
 import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
+import { resolveSortField } from 'src/common/utils';
 import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
-import { FindManyOptions, ILike, In } from 'typeorm';
+import { In } from 'typeorm';
 import { CreateRoleDto } from '../dto/create-role.dto';
+import { FilterRoleDto } from '../dto/filter-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
 import { Permission } from '../entities/permission.entity';
 import { RolePermission } from '../entities/role-permission.entity';
 import { Role } from '../entities/role.entity';
+
+const VALID_SORT_FIELDS: (keyof Role)[] = ['createdAt'];
 
 @Injectable()
 export class RoleService {
@@ -23,36 +27,36 @@ export class RoleService {
   ) {}
 
   async findAll(
-    page: number = 1,
-    limit: number = 10,
-    getAll: boolean = false,
-    search?: string,
+    filter: FilterRoleDto,
   ): Promise<{ items: Role[]; total: number }> {
+    const { getAll, limit, page, search } = filter;
     const skip = (page - 1) * limit;
-    const findOptions: FindManyOptions<Role> = {
-      order: { createdAt: 'DESC' },
-      relations: [
-        'rolePermissions',
-        'rolePermissions.permission',
-        'rolePermissions.permission.module',
-      ],
-    };
 
-    if (search) {
-      findOptions.where = [
-        { name: ILike(`%${search}%`) },
-        { description: ILike(`%${search}%`) },
-      ];
-    }
+    const orderField = resolveSortField(
+      filter.sortBy,
+      VALID_SORT_FIELDS,
+      'createdAt',
+    );
+
+    const qb = this.txHost.tx
+      .getRepository(Role)
+      .createQueryBuilder('role')
+      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+      .leftJoinAndSelect('rolePermissions.permission', 'permission')
+      .leftJoinAndSelect('permission.module', 'module')
+      .orderBy(`role.${orderField}`, filter.sortOrder ?? 'DESC');
 
     if (!getAll) {
-      findOptions.skip = skip;
-      findOptions.take = limit;
+      qb.skip(skip).take(limit);
     }
 
-    const [items, total] = await this.txHost.tx
-      .getRepository(Role)
-      .findAndCount(findOptions);
+    if (search) {
+      qb.andWhere('(role.name ILIKE :term OR role.description ILIKE :term)', {
+        term: `%${search}%`,
+      });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
     return { items, total };
   }
 

@@ -38,12 +38,7 @@ export class RoleController {
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'read' },
   )
   async findAll(@Query() filterDto: FilterRoleDto) {
-    return this.roleService.findAll(
-      filterDto.page,
-      filterDto.limit,
-      filterDto.getAll,
-      filterDto.search,
-    );
+    return this.roleService.findAll(filterDto);
   }
 
   @Get(':id')

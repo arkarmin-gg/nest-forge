@@ -1,15 +1,13 @@
-import {
-  IsOptional,
-  IsEnum,
-  IsString,
-  IsDateString,
-  IsIn,
-} from 'class-validator';
+import { IsOptional, IsEnum, IsString, IsDateString } from 'class-validator';
 import { LogAction } from '../constants/log-action.enum';
 import { LogStatus } from '../constants/log-status.enum';
-import { PaginationFilterDto } from 'src/common/dto';
+import { SortableFilterDto } from 'src/common/dto';
 
-export class FilterActivityLogDto extends PaginationFilterDto {
+export class FilterActivityLogDto extends SortableFilterDto {
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   @IsOptional()
   @IsString()
   userId?: string;
@@ -49,12 +47,4 @@ export class FilterActivityLogDto extends PaginationFilterDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
-
-  @IsOptional()
-  @IsString()
-  sortBy?: string = 'createdAt';
-
-  @IsOptional()
-  @IsIn(['ASC', 'DESC'])
-  sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }
