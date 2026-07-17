@@ -5,9 +5,11 @@ import {
   HttpCode,
   HttpStatus,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
-import { LogAction, LogActivity } from 'src/modules/log/api';
+import { Request } from 'express';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth';
 import {
   PermissionModule,
   PermissionsGuard,
@@ -21,18 +23,21 @@ export class SettingController {
   constructor(private readonly settingService: SettingService) {}
 
   @Put('smtp')
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'Admin updated SMTP settings',
-    resourceType: 'Setting',
-  })
   @RequirePermissions(
     { module: PermissionModule.SETTING, permission: 'update' },
     { module: PermissionModule.SETTING_SMTP, permission: 'update' },
   )
   @HttpCode(HttpStatus.OK)
-  async createSMTPSettings(@Body() createSMTPDto: CreateSMTPDto) {
-    return this.settingService.createSMTPSettings(createSMTPDto);
+  async createSMTPSettings(
+    @Body() createSMTPDto: CreateSMTPDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.settingService.createSMTPSettings(
+      createSMTPDto,
+      admin.id,
+      request,
+    );
   }
 
   @Get('smtp')

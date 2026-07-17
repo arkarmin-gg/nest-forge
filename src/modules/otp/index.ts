@@ -1,1 +1,1 @@
-export { OtpPurpose } from './constants/otp-purpose.enum';
+export { OtpPurpose } from './enums/otp-purpose.enum';

@@ -20,10 +20,8 @@ import { ForgotPasswordSendOTPDto } from '../dto/forgot-password-send-otp.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { UserForgotPasswordSendOTPDto } from '../dto/user-forgot-password-send-otp.dto';
 import { VerifyPasswordResetOTPCodeDto } from '../dto/verify-password-reset-otp-code.dto';
-import {
-  FORGOT_PASSWORD_CODE_REQUESTED,
-  ForgotPasswordCodeRequestedEvent,
-} from '../events/forgot-password-code-requested.event';
+import { ForgotPasswordCodeRequestedEvent } from '../events/forgot-password-code-requested.event';
+import { FORGOT_PASSWORD_CODE_REQUESTED } from '../constants/forgot-password-code-requested-event.constant';
 import { TokenService } from './token.service';
 
 @Injectable()

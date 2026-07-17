@@ -10,8 +10,8 @@ import {
   ManyToOne,
   Relation,
 } from 'typeorm';
-import { OtpPurpose } from '../constants/otp-purpose.enum';
-import { OtpStatus } from '../constants/otp-status.enum';
+import { OtpPurpose } from '../enums/otp-purpose.enum';
+import { OtpStatus } from '../enums/otp-status.enum';
 
 @Entity('otp_records')
 @Index(['userId', 'purpose', 'status'])

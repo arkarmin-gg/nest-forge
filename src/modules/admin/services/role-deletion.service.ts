@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { RoleService } from 'src/modules/role/api';
 import { AdminService } from './admin.service';
 
@@ -19,7 +20,11 @@ export class RoleDeletionService {
     private readonly roleService: RoleService,
   ) {}
 
-  async deleteRole(id: string): Promise<void> {
+  async deleteRole(
+    id: string,
+    adminId: string,
+    request: Request,
+  ): Promise<void> {
     const hasAssignedAdmins = await this.adminService.hasAdminsWithRole(id);
     if (hasAssignedAdmins) {
       throw new ConflictException(
@@ -27,7 +32,7 @@ export class RoleDeletionService {
       );
     }
 
-    const deleted = await this.roleService.remove(id);
+    const deleted = await this.roleService.remove(id, adminId, request);
     if (!deleted) {
       throw new NotFoundException('Role not found');
     }

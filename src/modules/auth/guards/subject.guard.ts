@@ -5,10 +5,8 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  RequiredSubjectType,
-  SUBJECT_KEY,
-} from '../decorators/require-subject.decorator';
+import { SUBJECT_KEY } from '../constants/subject-key.constant';
+import { SubjectType } from '../enums/subject-type.enum';
 import type { RequestWithUser } from '../interfaces/user.interface';
 
 // Asserts that the authenticated Subject is of the required type (USER or ADMIN).
@@ -20,7 +18,7 @@ export class SubjectGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const requiredSubject = this.reflector.getAllAndOverride<
-      RequiredSubjectType | undefined
+      SubjectType | undefined
     >(SUBJECT_KEY, [context.getHandler(), context.getClass()]);
 
     if (!requiredSubject) {

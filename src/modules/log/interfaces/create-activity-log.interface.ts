@@ -1,5 +1,5 @@
-import { LogAction } from '../constants/log-action.enum';
-import { LogStatus } from '../constants/log-status.enum';
+import { LogAction } from '../enums/log-action.enum';
+import { LogStatus } from '../enums/log-status.enum';
 
 export interface CreateActivityLogData {
   userId: string;

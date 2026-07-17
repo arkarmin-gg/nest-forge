@@ -1,4 +1,4 @@
 import { SetMetadata } from '@nestjs/common';
+import { CHECK_OWNERSHIP_KEY } from '../constants/check-ownership-key.constant';
 
-export const CHECK_OWNERSHIP_KEY = 'check_ownership';
 export const CheckOwnership = () => SetMetadata(CHECK_OWNERSHIP_KEY, true);

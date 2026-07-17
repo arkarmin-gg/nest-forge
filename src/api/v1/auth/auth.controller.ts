@@ -40,7 +40,6 @@ import {
   UserRegisterPasswordSetupDto,
   VerifyPasswordResetOTPCodeDto,
 } from 'src/modules/auth/api';
-import { LogAction, LogActivity } from 'src/modules/log/api';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
@@ -128,19 +127,13 @@ export class AuthController {
   }
 
   @Post('logout')
-  @LogActivity({
-    action: LogAction.LOGOUT,
-    description: 'Logged out',
-    resourceType: 'Auth',
-    getResourceId: (_, req) =>
-      (req as unknown as { user?: { id?: string } }).user?.id,
-  })
   @HttpCode(200)
   async logout(
     @Body() dto: RefreshTokenDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
   ) {
-    await this.userAuthService.logout(dto.refreshToken, user);
+    await this.userAuthService.logout(dto.refreshToken, user, request);
   }
 
   @Get('me')
@@ -150,13 +143,6 @@ export class AuthController {
   }
 
   @Patch('me')
-  @LogActivity({
-    action: LogAction.UPDATE_PROFILE,
-    description: 'Profile updated',
-    resourceType: 'Auth',
-    getResourceId: (_, req) =>
-      (req as unknown as { user?: { id?: string } }).user?.id,
-  })
   @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   @HttpCode(200)
   @RequestTimeout(30_000)
@@ -170,13 +156,6 @@ export class AuthController {
   }
 
   @Put('me/password')
-  @LogActivity({
-    action: LogAction.CHANGE_PASSWORD,
-    description: 'Password changed',
-    resourceType: 'Auth',
-    getResourceId: (_, req) =>
-      (req as unknown as { user?: { id?: string } }).user?.id,
-  })
   @HttpCode(200)
   async changePassword(
     @CurrentUser() user: AuthenticatedUser,
@@ -187,13 +166,6 @@ export class AuthController {
   }
 
   @Delete('me')
-  @LogActivity({
-    action: LogAction.DELETE_ACCOUNT,
-    description: 'Account deleted',
-    resourceType: 'Auth',
-    getResourceId: (_, req) =>
-      (req as unknown as { user?: { id?: string } }).user?.id,
-  })
   @HttpCode(200)
   async deleteProfile(
     @CurrentUser() user: AuthenticatedUser,

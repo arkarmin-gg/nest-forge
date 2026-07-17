@@ -5,13 +5,20 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Request } from 'express';
 import { FileUploadService } from 'src/common/services';
 import {
+  buildRequestContext,
   parseRangeEnd,
   parseRangeStart,
   resolveSortField,
 } from 'src/common/utils';
-import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
+import {
+  diffAuditValues,
+  LogAction,
+  LogQueueService,
+  LogStatus,
+} from 'src/modules/log/api';
 import { DeepPartial, FindOptionsWhere, Repository } from 'typeorm';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { FilterUserDto } from '../dto/filter-user.dto';
@@ -19,6 +26,11 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import { User } from '../entities/user.entity';
 
 const VALID_SORT_FIELDS: (keyof User)[] = ['createdAt'];
+
+interface LogActor {
+  id: string;
+  subjectType?: 'ADMIN' | 'USER';
+}
 
 @Injectable()
 export class UserService {
@@ -28,43 +40,68 @@ export class UserService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly fileUploadService: FileUploadService,
+    private readonly logQueueService: LogQueueService,
   ) {}
 
   async create(
     createUserDto: CreateUserDto,
-    file?: Express.Multer.File,
+    file: Express.Multer.File | undefined,
+    adminId: string,
+    request: Request,
   ): Promise<User> {
-    const existingPhoneUser = await this.userRepository.findOne({
-      where: { phone: createUserDto.phone },
-    });
+    try {
+      const existingPhoneUser = await this.userRepository.findOne({
+        where: { phone: createUserDto.phone },
+      });
 
-    if (existingPhoneUser) {
-      throw new ConflictException(
-        `User with phone '${createUserDto.phone}' already exists`,
-      );
-    }
-
-    let profileImageUrl = createUserDto.profileImageUrl || '';
-
-    if (file) {
-      const uploadedKey = await this.fileUploadService.upload(
-        file,
-        'users/profile',
-      );
-      if (uploadedKey) {
-        profileImageUrl = uploadedKey;
+      if (existingPhoneUser) {
+        throw new ConflictException(
+          `User with phone '${createUserDto.phone}' already exists`,
+        );
       }
+
+      let profileImageUrl = createUserDto.profileImageUrl || '';
+
+      if (file) {
+        const uploadedKey = await this.fileUploadService.upload(
+          file,
+          'users/profile',
+        );
+        if (uploadedKey) {
+          profileImageUrl = uploadedKey;
+        }
+      }
+
+      const user = this.userRepository.create({
+        ...createUserDto,
+        loginProvider: 'SMS',
+        profileImageKey: profileImageUrl,
+      });
+      const savedUser = await this.userRepository.save(user);
+      this.logger.log(`User created with ID: ${savedUser.id}`);
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.CREATE,
+        description: 'Admin created a user',
+        entityName: 'User',
+        entityId: savedUser.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return savedUser;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.CREATE,
+        description: 'User creation failed',
+        entityName: 'User',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    const user = this.userRepository.create({
-      ...createUserDto,
-      loginProvider: 'SMS',
-      profileImageKey: profileImageUrl,
-    });
-    const savedUser = await this.userRepository.save(user);
-    this.logger.log(`User created with ID: ${savedUser.id}`);
-
-    return savedUser;
   }
 
   async findAll(
@@ -125,85 +162,165 @@ export class UserService {
     return user;
   }
 
+  /**
+   * Shared by the admin zone (admin editing another user — audit log) and the
+   * app zone (a user editing their own profile — activity log). `actor`
+   * carries whichever subject made the request so the right table is written.
+   */
   async update(
     id: string,
     updateUserDto: UpdateUserDto,
-    file?: Express.Multer.File,
+    file: Express.Multer.File | undefined,
+    actor: LogActor,
+    request: Request,
   ): Promise<User> {
-    const existingUser = await this.userRepository.findOne({ where: { id } });
-
-    if (!existingUser) {
-      throw new NotFoundException(`User with ID '${id}' not found`);
-    }
-
-    // PartialType uses runtime reflection — cast once to access inherited properties
-    const dto = updateUserDto as Partial<CreateUserDto>;
-
-    if (dto.phone && dto.phone !== existingUser.phone) {
-      const duplicatePhoneUser = await this.userRepository.findOne({
-        where: { phone: dto.phone },
+    try {
+      const existingUser = await this.userRepository.findOne({
+        where: { id },
       });
-      if (duplicatePhoneUser) {
-        this.logger.warn(`User with phone '${dto.phone}' already exists`);
-        throw new ConflictException(
-          `User with phone '${dto.phone}' already exists`,
-        );
+
+      if (!existingUser) {
+        throw new NotFoundException(`User with ID '${id}' not found`);
       }
-    }
 
-    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
-      file,
-      bodyUrl: dto.profileImageUrl,
-      existingUrl: existingUser.profileImageKey || '',
-      path: 'users/profile',
-    });
+      // PartialType uses runtime reflection — cast once to access inherited properties
+      const dto = updateUserDto as Partial<CreateUserDto>;
 
-    const updatedUser = await this.userRepository.preload({
-      id,
-      ...updateUserDto,
-      profileImageKey: newProfileImageUrl,
-    });
+      if (dto.phone && dto.phone !== existingUser.phone) {
+        const duplicatePhoneUser = await this.userRepository.findOne({
+          where: { phone: dto.phone },
+        });
+        if (duplicatePhoneUser) {
+          this.logger.warn(`User with phone '${dto.phone}' already exists`);
+          throw new ConflictException(
+            `User with phone '${dto.phone}' already exists`,
+          );
+        }
+      }
 
-    if (!updatedUser) {
-      this.logger.warn(`User with ID '${id}' not found`);
-      throw new NotFoundException(`User with ID '${id}' not found`);
-    }
+      const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+        file,
+        bodyUrl: dto.profileImageUrl,
+        existingUrl: existingUser.profileImageKey || '',
+        path: 'users/profile',
+      });
 
-    if (dto.password) {
-      updatedUser.password = dto.password;
-    }
+      const updatedUser = await this.userRepository.preload({
+        id,
+        ...updateUserDto,
+        profileImageKey: newProfileImageUrl,
+      });
 
-    const savedUser = await this.userRepository.save(updatedUser);
+      if (!updatedUser) {
+        this.logger.warn(`User with ID '${id}' not found`);
+        throw new NotFoundException(`User with ID '${id}' not found`);
+      }
 
-    attachAuditLogMetadata(
-      savedUser,
-      diffAuditValues(existingUser, savedUser, [
+      if (dto.password) {
+        updatedUser.password = dto.password;
+      }
+
+      const savedUser = await this.userRepository.save(updatedUser);
+
+      const { oldValue, newValue } = diffAuditValues(existingUser, savedUser, [
         ...Object.keys(updateUserDto),
         ...(file ? ['profileImageUrl'] : []),
-      ]),
-    );
+      ]);
 
-    await this.fileUploadService.replace(
-      newProfileImageUrl,
-      existingUser.profileImageKey || '',
-    );
-    this.logger.log(`User updated with ID: ${savedUser.id}`);
+      await this.fileUploadService.replace(
+        newProfileImageUrl,
+        existingUser.profileImageKey || '',
+      );
+      this.logger.log(`User updated with ID: ${savedUser.id}`);
 
-    return savedUser;
+      if (actor.subjectType === 'ADMIN') {
+        await this.logQueueService.enqueueAuditLog({
+          adminId: actor.id,
+          action: LogAction.UPDATE,
+          description: 'Admin updated a user',
+          entityName: 'User',
+          entityId: savedUser.id,
+          oldValue,
+          newValue,
+          status: LogStatus.SUCCESS,
+          ...buildRequestContext(request),
+        });
+      } else {
+        await this.logQueueService.enqueueActivityLog({
+          userId: actor.id,
+          action: LogAction.UPDATE,
+          description: 'User updated their own profile',
+          resourceType: 'User',
+          resourceId: savedUser.id,
+          status: LogStatus.SUCCESS,
+          ...buildRequestContext(request),
+        });
+      }
+
+      return savedUser;
+    } catch (error) {
+      if (actor.subjectType === 'ADMIN') {
+        await this.logQueueService.enqueueAuditLog({
+          adminId: actor.id,
+          action: LogAction.UPDATE,
+          description: 'User update failed',
+          entityName: 'User',
+          entityId: id,
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        });
+      } else {
+        await this.logQueueService.enqueueActivityLog({
+          userId: actor.id,
+          action: LogAction.UPDATE,
+          description: 'User profile update failed',
+          resourceType: 'User',
+          resourceId: id,
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        });
+      }
+      throw error;
+    }
   }
 
-  async remove(id: string): Promise<void> {
-    const existingUser = await this.userRepository.findOne({
-      where: { id },
-    });
-    if (!existingUser) {
-      throw new NotFoundException(`User with ID '${id}' not found`);
+  async remove(id: string, adminId: string, request: Request): Promise<void> {
+    try {
+      const existingUser = await this.userRepository.findOne({
+        where: { id },
+      });
+      if (!existingUser) {
+        throw new NotFoundException(`User with ID '${id}' not found`);
+      }
+
+      await this.fileUploadService.remove(existingUser.profileImageKey || '');
+
+      await this.userRepository.softRemove(existingUser);
+      this.logger.log(
+        `User with ID '${id}' has been successfully soft deleted`,
+      );
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.DELETE,
+        description: 'Admin deleted a user',
+        entityName: 'User',
+        entityId: id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.DELETE,
+        description: 'User deletion failed',
+        entityName: 'User',
+        entityId: id,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    await this.fileUploadService.remove(existingUser.profileImageKey || '');
-
-    await this.userRepository.softRemove(existingUser);
-    this.logger.log(`User with ID '${id}' has been successfully soft deleted`);
   }
 
   // ─── Auth-oriented methods (consumed by AuthModule) ───────────────────────

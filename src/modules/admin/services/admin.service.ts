@@ -5,13 +5,20 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Request } from 'express';
 import { FileUploadService } from 'src/common/services';
 import {
+  buildRequestContext,
   parseRangeEnd,
   parseRangeStart,
   resolveSortField,
 } from 'src/common/utils';
-import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
+import {
+  diffAuditValues,
+  LogAction,
+  LogQueueService,
+  LogStatus,
+} from 'src/modules/log/api';
 import { RoleService } from 'src/modules/role/api';
 import { DeepPartial, Repository } from 'typeorm';
 import { CreateAdminDto } from '../dto/create-admin.dto';
@@ -30,46 +37,71 @@ export class AdminService {
     private readonly adminRepository: Repository<Admin>,
     private readonly roleService: RoleService,
     private readonly fileUploadService: FileUploadService,
+    private readonly logQueueService: LogQueueService,
   ) {}
 
   // ─── Admin CRUD operations ────────────────────────────────────────────────
 
   async create(
     createAdminDto: CreateAdminDto,
-    file?: Express.Multer.File,
+    file: Express.Multer.File | undefined,
+    adminId: string,
+    request: Request,
   ): Promise<Admin> {
-    const existingEmailAdmin = await this.adminRepository.findOne({
-      where: { email: createAdminDto.email },
-    });
+    try {
+      const existingEmailAdmin = await this.adminRepository.findOne({
+        where: { email: createAdminDto.email },
+      });
 
-    if (existingEmailAdmin) {
-      throw new ConflictException(
-        `Admin with email '${createAdminDto.email}' already exists`,
-      );
+      if (existingEmailAdmin) {
+        throw new ConflictException(
+          `Admin with email '${createAdminDto.email}' already exists`,
+        );
+      }
+
+      const role = await this.roleService.findOne(createAdminDto.roleId);
+      if (!role) {
+        throw new NotFoundException(
+          `Role with ID '${createAdminDto.roleId}' not found`,
+        );
+      }
+
+      const profileImageUrl = await this.fileUploadService.resolveUrl({
+        file,
+        bodyUrl: createAdminDto.profileImageUrl,
+        existingUrl: '',
+        path: 'admins/profile',
+      });
+
+      const admin = this.adminRepository.create({
+        ...createAdminDto,
+        profileImageKey: profileImageUrl,
+      });
+      const savedAdmin = await this.adminRepository.save(admin);
+      this.logger.log(`Admin created with ID: ${savedAdmin.id}`);
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.CREATE,
+        description: 'Admin created another admin',
+        entityName: 'Admin',
+        entityId: savedAdmin.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return savedAdmin;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.CREATE,
+        description: 'Admin creation failed',
+        entityName: 'Admin',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    const role = await this.roleService.findOne(createAdminDto.roleId);
-    if (!role) {
-      throw new NotFoundException(
-        `Role with ID '${createAdminDto.roleId}' not found`,
-      );
-    }
-
-    const profileImageUrl = await this.fileUploadService.resolveUrl({
-      file,
-      bodyUrl: createAdminDto.profileImageUrl,
-      existingUrl: '',
-      path: 'admins/profile',
-    });
-
-    const admin = this.adminRepository.create({
-      ...createAdminDto,
-      profileImageKey: profileImageUrl,
-    });
-    const savedAdmin = await this.adminRepository.save(admin);
-    this.logger.log(`Admin created with ID: ${savedAdmin.id}`);
-
-    return savedAdmin;
   }
 
   async findAll(
@@ -144,86 +176,138 @@ export class AdminService {
   async update(
     id: string,
     updateAdminDto: UpdateAdminDto,
-    file?: Express.Multer.File,
+    file: Express.Multer.File | undefined,
+    adminId: string,
+    request: Request,
   ): Promise<Admin> {
-    const existingAdmin = await this.adminRepository.findOne({ where: { id } });
-
-    if (!existingAdmin) {
-      throw new NotFoundException(`Admin with ID '${id}' not found`);
-    }
-
-    // PartialType uses runtime reflection — cast once to access inherited properties
-    const dto = updateAdminDto as Partial<CreateAdminDto>;
-
-    if (dto.email && dto.email !== existingAdmin.email) {
-      const duplicateEmailAdmin = await this.adminRepository.findOne({
-        where: { email: dto.email },
+    try {
+      const existingAdmin = await this.adminRepository.findOne({
+        where: { id },
       });
-      if (duplicateEmailAdmin) {
-        this.logger.warn(`Admin with email '${dto.email}' already exists`);
-        throw new ConflictException(
-          `Admin with email '${dto.email}' already exists`,
-        );
+
+      if (!existingAdmin) {
+        throw new NotFoundException(`Admin with ID '${id}' not found`);
       }
-    }
 
-    if (dto.roleId && dto.roleId !== existingAdmin.roleId) {
-      const role = await this.roleService.findOne(dto.roleId);
-      if (!role) {
-        this.logger.warn(`Role with ID '${dto.roleId}' not found`);
-        throw new NotFoundException(`Role with ID '${dto.roleId}' not found`);
+      // PartialType uses runtime reflection — cast once to access inherited properties
+      const dto = updateAdminDto as Partial<CreateAdminDto>;
+
+      if (dto.email && dto.email !== existingAdmin.email) {
+        const duplicateEmailAdmin = await this.adminRepository.findOne({
+          where: { email: dto.email },
+        });
+        if (duplicateEmailAdmin) {
+          this.logger.warn(`Admin with email '${dto.email}' already exists`);
+          throw new ConflictException(
+            `Admin with email '${dto.email}' already exists`,
+          );
+        }
       }
+
+      if (dto.roleId && dto.roleId !== existingAdmin.roleId) {
+        const role = await this.roleService.findOne(dto.roleId);
+        if (!role) {
+          this.logger.warn(`Role with ID '${dto.roleId}' not found`);
+          throw new NotFoundException(`Role with ID '${dto.roleId}' not found`);
+        }
+      }
+
+      const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+        file,
+        bodyUrl: dto.profileImageUrl,
+        existingUrl: existingAdmin.profileImageKey || '',
+        path: 'admins/profile',
+      });
+
+      const updatedAdmin = await this.adminRepository.preload({
+        id,
+        ...updateAdminDto,
+        profileImageKey: newProfileImageUrl,
+      });
+
+      if (!updatedAdmin) {
+        this.logger.warn(`Admin with ID '${id}' not found`);
+        throw new NotFoundException(`Admin with ID '${id}' not found`);
+      }
+
+      const savedAdmin = await this.adminRepository.save(updatedAdmin);
+
+      const { oldValue, newValue } = diffAuditValues(
+        existingAdmin,
+        savedAdmin,
+        [...Object.keys(updateAdminDto), ...(file ? ['profileImageUrl'] : [])],
+      );
+
+      await this.fileUploadService.replace(
+        newProfileImageUrl,
+        existingAdmin.profileImageKey || '',
+      );
+      this.logger.log(`Admin updated with ID: ${savedAdmin.id}`);
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin updated another admin',
+        entityName: 'Admin',
+        entityId: savedAdmin.id,
+        oldValue,
+        newValue,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return savedAdmin;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin update failed',
+        entityName: 'Admin',
+        entityId: id,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
-      file,
-      bodyUrl: dto.profileImageUrl,
-      existingUrl: existingAdmin.profileImageKey || '',
-      path: 'admins/profile',
-    });
-
-    const updatedAdmin = await this.adminRepository.preload({
-      id,
-      ...updateAdminDto,
-      profileImageKey: newProfileImageUrl,
-    });
-
-    if (!updatedAdmin) {
-      this.logger.warn(`Admin with ID '${id}' not found`);
-      throw new NotFoundException(`Admin with ID '${id}' not found`);
-    }
-
-    const savedAdmin = await this.adminRepository.save(updatedAdmin);
-
-    attachAuditLogMetadata(
-      savedAdmin,
-      diffAuditValues(existingAdmin, savedAdmin, [
-        ...Object.keys(updateAdminDto),
-        ...(file ? ['profileImageUrl'] : []),
-      ]),
-    );
-
-    await this.fileUploadService.replace(
-      newProfileImageUrl,
-      existingAdmin.profileImageKey || '',
-    );
-    this.logger.log(`Admin updated with ID: ${savedAdmin.id}`);
-
-    return savedAdmin;
   }
 
-  async remove(id: string): Promise<void> {
-    const existingAdmin = await this.adminRepository.findOne({
-      where: { id },
-    });
-    if (!existingAdmin) {
-      throw new NotFoundException(`Admin with ID '${id}' not found`);
+  async remove(id: string, adminId: string, request: Request): Promise<void> {
+    try {
+      const existingAdmin = await this.adminRepository.findOne({
+        where: { id },
+      });
+      if (!existingAdmin) {
+        throw new NotFoundException(`Admin with ID '${id}' not found`);
+      }
+
+      await this.fileUploadService.remove(existingAdmin.profileImageKey || '');
+
+      await this.adminRepository.softRemove(existingAdmin);
+      this.logger.log(
+        `Admin with ID '${id}' has been successfully soft deleted`,
+      );
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.DELETE,
+        description: 'Admin deleted another admin',
+        entityName: 'Admin',
+        entityId: id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.DELETE,
+        description: 'Admin deletion failed',
+        entityName: 'Admin',
+        entityId: id,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    await this.fileUploadService.remove(existingAdmin.profileImageKey || '');
-
-    await this.adminRepository.softRemove(existingAdmin);
-    this.logger.log(`Admin with ID '${id}' has been successfully soft deleted`);
   }
 
   // ─── Auth-oriented methods (consumed by AuthModule) ───────────────────────

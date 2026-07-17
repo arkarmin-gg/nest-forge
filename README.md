@@ -63,8 +63,8 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTEXT.md](CONTEXT.md), and
 ```bash
 npm install
 cp .env.example .env
-npm run migration:run
-npm run db:seed
+npx forge db migrate run
+npx forge db seed
 npm run start:dev
 ```
 
@@ -103,10 +103,25 @@ npm run lint:check      # eslint without mutation
 npm run typecheck       # tsc --noEmit
 npm test                # unit tests
 npm run test:e2e        # e2e tests
-npm run migration:run   # run migrations
-npm run db:seed         # seed roles, admin, user, settings
-npm run db:clear        # truncate local database tables
 ```
+
+## Database & Migrations
+
+All database and migration operations go through the `forge` CLI — there is no
+parallel `npm run migration:*` path.
+
+```bash
+npx forge db migrate generate AddArticleTable   # generate a migration
+npx forge db migrate run                        # apply pending migrations
+npx forge db seed                                # seed roles, admin, user, settings
+npx forge db clear                               # truncate local database tables
+```
+
+Every `run`/`revert`/`status`/`seed`/`clear`/`reset` subcommand accepts `--prod`
+to run against the compiled build (`dist/src/data-source.js`), and destructive
+prod operations (`clear`, `reset`, `migrate revert --prod`) require typing
+"yes" to confirm (or pass `-y`/`--yes` for CI). See
+[ARCHITECTURE.md §18](ARCHITECTURE.md) for the full command reference.
 
 ## Template Notes
 

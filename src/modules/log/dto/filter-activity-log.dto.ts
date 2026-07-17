@@ -1,6 +1,6 @@
 import { IsOptional, IsEnum, IsString, IsDateString } from 'class-validator';
-import { LogAction } from '../constants/log-action.enum';
-import { LogStatus } from '../constants/log-status.enum';
+import { LogAction } from '../enums/log-action.enum';
+import { LogStatus } from '../enums/log-status.enum';
 import { SortableFilterDto } from 'src/common/dto';
 
 export class FilterActivityLogDto extends SortableFilterDto {

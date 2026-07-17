@@ -8,8 +8,8 @@ import {
   Index,
 } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
-import { LogAction } from '../constants/log-action.enum';
-import { LogStatus } from '../constants/log-status.enum';
+import { LogAction } from '../enums/log-action.enum';
+import { LogStatus } from '../enums/log-status.enum';
 
 @Entity('activity_logs')
 @Index(['userId', 'action', 'createdAt'])

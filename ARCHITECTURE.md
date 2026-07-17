@@ -112,9 +112,11 @@ nest-forge/
 │   │
 │   ├── modules/                     ← Domain Layer (Business Logic)
 │   │   ├── auth/                    # Auth, RBAC, JWT, guards, strategies
+│   │   │   ├── constants/           # Reflector metadata keys, event names (one per file)
 │   │   │   ├── decorators/
 │   │   │   ├── dto/
 │   │   │   ├── entities/
+│   │   │   ├── enums/               # SubjectType, ...
 │   │   │   ├── events/
 │   │   │   ├── guards/
 │   │   │   ├── interfaces/
@@ -192,9 +194,12 @@ Understanding these four zones is **mandatory** before writing any code.
 ```typescript
 // ✅ CORRECT — thin controller
 @Post()
-@LogActivity({ action: LogAction.CREATE, description: 'Admin created' })
-async create(@Body() dto: CreateAdminDto) {
-  return this.adminService.create(dto);
+async create(
+  @Body() dto: CreateAdminDto,
+  @CurrentUser() admin: AuthenticatedUser,
+  @Req() request: Request,
+) {
+  return this.adminService.create(dto, admin.id, request);
 }
 
 // ❌ WRONG — business logic in controller
@@ -221,7 +226,7 @@ src/api/v1/
 **Rules for placing a new controller:**
 
 - A back-office endpoint goes under `api/v1/admin/<resource>/`, route prefix `admin/...`, gated by `PermissionsGuard` + `@RequirePermissions`. It may return raw entities (passive serialization).
-- An end-user endpoint goes under `api/v1/app/<resource>/`, route prefix `app/...`, gated by `SubjectGuard` + `@RequireSubject('USER')`. It **must** map to a whitelist response DTO (see §7) and derive the target from `@CurrentUser()` — never a `:id` path param.
+- An end-user endpoint goes under `api/v1/app/<resource>/`, route prefix `app/...`, gated by `SubjectGuard` + `@RequireSubject(SubjectType.USER)`. It **must** map to a whitelist response DTO (see §7) and derive the target from `@CurrentUser()` — never a `:id` path param.
 - Domain services in `modules/` stay audience-agnostic and are reused by both zones; the audience-specific shaping lives in the controller.
 
 Reference example: `src/api/v1/app/user/user-app.controller.ts` (`GET`/`PATCH /api/v1/app/me`).
@@ -236,6 +241,9 @@ Each module contains:
 - `dto/` — Data Transfer Objects for input validation
 - `services/` — Business logic
 - `events/` — Domain events for cross-module communication
+- `enums/` — TS enums, one per file (see below)
+- `interfaces/` — Exported, reusable domain interfaces, one per file (see below)
+- `constants/` — Exported primitive constants — Reflector metadata keys, event-name strings, config values — one per file (see below)
 - `index.ts` — Module wiring and domain types (module class, entities, events)
 - `api.ts` — Services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
 
@@ -246,6 +254,31 @@ Each module contains:
 - Always expose both `index.ts` and `api.ts` barrels — no symbol appears in both
 - Controllers always import from `api.ts` — services, DTOs, and route decorators live there
 - Domain services import services from `api.ts`; entities and events from `index.ts`
+
+#### `enums/`, `interfaces/`, `constants/` — One Concern Per Folder
+
+A module keeps its enums, its reusable interfaces, and its primitive constants in three separate folders — never mixed into a single catch-all `constants/` (see ADR-0011). Each folder holds one symbol per file, named after the symbol:
+
+```
+modules/log/
+├── enums/
+│   ├── log-action.enum.ts
+│   ├── log-status.enum.ts
+│   └── log-job-name.enum.ts
+├── interfaces/
+│   ├── create-activity-log.interface.ts
+│   └── create-audit-log.interface.ts
+└── constants/
+    └── log-queue.constants.ts
+```
+
+**What goes where:**
+
+- `enums/*.enum.ts` — TS `enum` declarations, including the varchar-backed enums from §9 (e.g. `OtpStatus`, `LogAction`). Also the natural home for a decorator's parameter type when that parameter is a fixed set of string values (e.g. `SubjectType` for `@RequireSubject()`) — prefer an enum over a union type alias so it's importable, validated with `@IsEnum()`, and discoverable in one place.
+- `interfaces/*.interface.ts` — **exported** interfaces meant to be imported elsewhere (a guard, a DTO, another service). A file-private, non-exported interface that shapes a single function's options or a seeder's local config (e.g. `RoleConfig` in `role.seeder.ts`) stays right where it's declared — moving it would only be relocation for its own sake, since nothing outside that file could ever import it.
+- `constants/*.constant.ts` — exported primitive constants: `SetMetadata` Reflector keys (`PERMISSIONS_KEY`), queue names (`LOG_QUEUE`, `EMAIL_NOTIFICATION_QUEUE`), and standalone config values (job retry counts, backoff delays). Even though a constant is only ever read by one queue registration, it still gets its own file here rather than staying inline — this keeps the "what enums/interfaces/constants does this module define" question answerable by listing three folders, not by reading every service and processor file.
+
+**Barrels:** none of these three folders gets its own `index.ts`. Import by direct file path (`from '../enums/log-status.enum'`) — the module-root `index.ts`/`api.ts` remains the only real barrel boundary (per the two-barrel rule above). A module only gets the folders it needs — no empty `enums/` in a module with no enums.
 
 ### Zone 3: `infrastructure/` — Technical Layer
 
@@ -401,12 +434,6 @@ Incoming HTTP Request
         │
         ▼
 ┌──────────────────────┐
-│ ActivityLog          │  Captures @LogActivity metadata
-│  Interceptor         │
-└──────────────────────┘
-        │
-        ▼
-┌──────────────────────┐
 │      TrimPipe        │  Strips leading/trailing whitespace from all body & query strings
 └──────────────────────┘
         │
@@ -446,7 +473,7 @@ Incoming HTTP Request
 > - `RequestIdMiddleware` — `app.module.ts` via `configure(consumer)`.
 > - Global guards — **only** `JwtAuthGuard` and `ThrottlerGuard`, as `APP_GUARD` providers in [app.module.ts](src/app.module.ts). `RolesGuard`/`PermissionsGuard`/`ResourceOwnershipGuard`/`SubjectGuard` are **not** global — they run only where a handler/controller adds `@UseGuards(...)`.
 > - `TrimPipe` then `ValidationPipe` — `app.useGlobalPipes(...)` in [main.ts](src/main.ts).
-> - Interceptors are spread across files: `ClassSerializerInterceptor` + `TimeoutInterceptor` in `main.ts`; `ActivityLogInterceptor` as `APP_INTERCEPTOR` in `app.module.ts`; `PresignedUrlInterceptor` + `ResponseInterceptor` as `APP_INTERCEPTOR` in [common.module.ts](src/common/common.module.ts). NestJS runs interceptors' pre-controller logic in registration order and their post-controller (response) logic in reverse, so on the way out `ResponseInterceptor` wraps first, then presigned-URL resolution, etc.
+> - Interceptors are spread across files: `ClassSerializerInterceptor` + `TimeoutInterceptor` in `main.ts`; `PresignedUrlInterceptor` + `ResponseInterceptor` as `APP_INTERCEPTOR` in [common.module.ts](src/common/common.module.ts). There is no global activity-log interceptor — log writes are explicit `LogQueueService` calls inside service methods (§11), not something that runs on every request. NestJS runs interceptors' pre-controller logic in registration order and their post-controller (response) logic in reverse, so on the way out `ResponseInterceptor` wraps first, then presigned-URL resolution, etc.
 
 ---
 
@@ -751,7 +778,7 @@ This lets deleted rows hold stale values while active rows stay unique. The exis
 **Never** declare an enum-like column as a native database enum (`@Column({ type: 'enum', enum: X })`). Always use `varchar`, typed in TypeScript by an `enum`/`const ... as const` object, backed by a migration `CHECK` constraint (see ADR-0009). A native DB enum makes adding/renaming a value an awkward `ALTER TYPE` migration and creates a second source of truth that can drift from the TS enum.
 
 ```typescript
-// src/modules/otp/constants/otp-status.enum.ts — the source of truth
+// src/modules/otp/enums/otp-status.enum.ts — the source of truth
 export enum OtpStatus {
   PENDING = 'PENDING',
   VERIFIED = 'VERIFIED',
@@ -851,113 +878,112 @@ async create(dto: CreateAdminDto): Promise<Admin> {
 
 ### Two Types of Logs
 
-| Type            | Table           | Purpose                                              | Who writes it                     |
-| --------------- | --------------- | ---------------------------------------------------- | --------------------------------- |
-| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)  | Interceptor or `ActivityLogEvent` |
-| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff | Interceptor or `AuditLogEvent`    |
+| Type            | Table           | Purpose                                              | Who writes it        |
+| --------------- | --------------- | ----------------------------------------------------- | --------------------- |
+| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)   | `LogQueueService`      |
+| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff   | `LogQueueService`      |
 
-### Two Write Paths
+There is no interceptor and no `@LogActivity` decorator. Every log write is an explicit call from inside the service method that performs the underlying business operation — never inferred from route metadata, and never triggered from the controller layer.
 
-There are two distinct ways to write a log entry. Choose based on when the user identity is known.
+### Write Path — Direct Enqueue via `LogQueueService`
 
-#### Path 1 — `@LogActivity` Interceptor (authenticated endpoints)
-
-Use this for any endpoint protected by `JwtAuthGuard` where `request.user` is populated before the handler runs.
+`src/modules/log` registers a dedicated BullMQ queue (`LOG_QUEUE`) with a single `LogProcessor` that persists jobs to the appropriate table. Services call `LogQueueService` directly — there is **no `EventEmitter2` hop** for logs. This is a deliberate departure from the notification module's event-bridge pattern (§13): logs have exactly one producer-to-consumer relationship per call site, so the event-emitter indirection would add nothing. Use the event-bridge pattern when something else might need to subscribe to the same signal; use direct-enqueue when the queue is the only consumer, as it is here.
 
 ```typescript
-import { LogAction, LogActivity } from 'src/modules/log/api';
-
-@Patch('me')
-@LogActivity({
-  action: LogAction.UPDATE_PROFILE,
-  description: 'Profile updated',
-  resourceType: 'Auth',                              // optional
-  getResourceId: (_, req) =>                         // optional
-    (req as unknown as { user?: { id?: string } }).user?.id,
-})
-async updateProfile(@CurrentUser() user: AuthenticatedUser, ...) {
-  return this.userAuthService.updateProfile(...);
-}
-```
-
-The interceptor automatically logs `LogStatus.SUCCESS` on completion and `LogStatus.FAILURE` if the handler throws, then re-throws the error so exception filters still run normally.
-
-#### Path 2 — Service Events (`@Public()` endpoints and failure cases)
-
-`@Public()` endpoints run before authentication, so `request.user` is null and the interceptor skips logging. Domain services must emit events directly via `EventEmitter2`.
-
-```typescript
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildRequestContext } from 'src/common/utils';
-import {
-  ACTIVITY_LOG_EVENT,
-  ActivityLogEvent,
-  LogAction,
-  LogStatus,
-} from 'src/modules/log';
+import { LogAction, LogQueueService, LogStatus } from 'src/modules/log/api';
 
 @Injectable()
-export class UserAuthService {
-  constructor(private eventEmitter: EventEmitter2) {}
+export class AdminService {
+  constructor(private readonly logQueueService: LogQueueService) {}
 
-  async userLogin(dto: UserLoginDto, request: Request) {
-    const user = await this.validateUser(dto).catch((error) => {
-      // Log failure before re-throwing
-      this.eventEmitter.emit(
-        ACTIVITY_LOG_EVENT,
-        new ActivityLogEvent({
-          userId: 'unknown',
-          action: LogAction.LOGIN,
-          description: 'User login failed',
-          resourceType: 'Auth',
-          status: LogStatus.FAILURE,
-          ...buildRequestContext(request),
-        }),
-      );
-      throw error;
-    });
+  async update(id: string, dto: UpdateAdminDto, adminId: string, request: Request) {
+    try {
+      // ... perform the update ...
 
-    // Log success
-    this.eventEmitter.emit(
-      ACTIVITY_LOG_EVENT,
-      new ActivityLogEvent({
-        userId: user.id,
-        action: LogAction.LOGIN,
-        description: 'User logged in',
-        resourceType: 'Auth',
-        resourceId: user.id,
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin updated another admin',
+        entityName: 'Admin',
+        entityId: id,
         status: LogStatus.SUCCESS,
         ...buildRequestContext(request),
-      }),
-    );
+      });
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin update failed',
+        entityName: 'Admin',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
+    }
   }
 }
 ```
 
-Use `AuditLogEvent` / `AUDIT_LOG_EVENT` for admin service events — same pattern.
+Use `enqueueActivityLog` for end-user actions and `enqueueAuditLog` for admin-driven ones — the call site always knows which table applies. Where a single method serves both an admin-zone and an app-zone caller (e.g. `UserService.update`, shared by an admin editing another user and a user editing their own profile), the caller passes an `actor` describing who made the request, and the method branches explicitly between the two `enqueue*` calls — the branching stays in application code, not inside `LogQueueService`.
 
-### Audit Log Before/After Diffs
+`LogQueueService` swallows its own enqueue failures (logs via `Logger.error`, never throws) — a Redis outage must never fail the business operation that already succeeded. Jobs run with the same retry policy as email jobs (`attempts: 3`, exponential backoff, `removeOnComplete: true`, `removeOnFail: { count: 100 }`).
 
-To capture what changed, use `diffAuditValues` + `attachAuditLogMetadata` in the service. The interceptor reads the metadata off the return value and writes the diff to the audit log.
+### Success/Failure Semantics
+
+- **Non-transactional methods** (the large majority): "success" means the method resolved without throwing. Enqueue the `SUCCESS` log immediately after the write; enqueue a `FAILURE` log (in a `catch` block, then re-throw) if anything before that point throws.
+- **Transactional methods** (only `RoleService.create`/`update` today, via `@Transactional()`): the enqueue must happen only after the transaction actually commits, since a later statement in the same transaction could still roll back everything. Because `@nestjs-cls/transactional` (this project's installed version) does not expose a commit-hook API, the pattern is to split the method into a private `@Transactional()`-decorated core (e.g. `createInTransaction`) and a public, non-transactional wrapper that awaits the core and enqueues afterward. The wrapper's `await` only resolves once the decorator's wrapped promise has resolved — which is only after commit — so this achieves the same guarantee without a hook:
 
 ```typescript
-import {
-  attachAuditLogMetadata,
-  diffAuditValues,
-} from 'src/modules/log/api';
+async create(dto: CreateRoleDto, adminId: string, request: Request) {
+  try {
+    const role = await this.createInTransaction(dto); // resolves only after commit
+    await this.logQueueService.enqueueAuditLog({ /* SUCCESS */ });
+    return role;
+  } catch (error) {
+    await this.logQueueService.enqueueAuditLog({ /* FAILURE */ });
+    throw error;
+  }
+}
 
-async updateAdmin(id: string, dto: UpdateAdminDto): Promise<Admin> {
-  const before = await this.findById(id);
-  const updated = await this.adminRepository.save({ ...before, ...dto });
-
-  const diff = diffAuditValues(before, updated, ['fullName', 'email', 'isActive']);
-  return attachAuditLogMetadata(updated, diff);
-  // Interceptor consumes the non-enumerable __auditLogMetadata property.
-  // It never appears in the API response.
+@Transactional()
+private async createInTransaction(dto: CreateRoleDto) {
+  /* ... the actual transactional writes ... */
 }
 ```
 
-`diffAuditValues` automatically strips any field named `password` — no manual redaction needed.
+Failure logs are never gated on this — they're emitted immediately at the point of failure, since there's no commit to wait on either way.
+
+### Audit Log Before/After Diffs
+
+`diffAuditValues` is a pure function — it returns a plain `{ oldValue, newValue }` object, nothing more. Pass the result straight into the `enqueueAuditLog` call.
+
+```typescript
+import { diffAuditValues } from 'src/modules/log/api';
+
+async updateAdmin(id: string, dto: UpdateAdminDto, adminId: string, request: Request) {
+  const before = await this.findById(id);
+  const updated = await this.adminRepository.save({ ...before, ...dto });
+
+  const { oldValue, newValue } = diffAuditValues(before, updated, ['fullName', 'email', 'isActive']);
+
+  await this.logQueueService.enqueueAuditLog({
+    adminId,
+    action: LogAction.UPDATE,
+    entityName: 'Admin',
+    entityId: id,
+    description: 'Admin updated another admin',
+    oldValue,
+    newValue,
+    status: LogStatus.SUCCESS,
+    ...buildRequestContext(request),
+  });
+
+  return updated;
+}
+```
+
+`diffAuditValues` automatically strips any field named `password` — no manual redaction needed. `CreateActivityLogData` (activity logs) has no `oldValue`/`newValue` fields — diffs are an audit-log-only concept.
 
 ### Log Retention
 
@@ -1222,6 +1248,23 @@ export class OrderService {
 - Updating one record based on another
 - Any operation where partial failure would corrupt data
 
+**Running code only after commit:** the installed version of `@nestjs-cls/transactional` does not expose a commit-hook API (no `runOnTransactionCommit`/equivalent). If something must happen only once a transaction has actually committed — e.g. enqueuing an audit-log write, so a later rollback can't leave a log entry for a change that never persisted — split the method into a private `@Transactional()` core and a public, non-transactional wrapper that awaits the core and runs the post-commit logic afterward. The wrapper's `await` only resolves once the decorator's wrapped promise settles, which happens after commit (or after rollback, if it throws):
+
+```typescript
+async create(dto: CreateRoleDto, adminId: string, request: Request) {
+  const role = await this.createInTransaction(dto); // resolves only after commit
+  await this.logQueueService.enqueueAuditLog({ /* ... */ });
+  return role;
+}
+
+@Transactional()
+private async createInTransaction(dto: CreateRoleDto) {
+  /* ... */
+}
+```
+
+See §11 for the full pattern as used in `RoleService`.
+
 ---
 
 ## 16. Key Decorators Reference
@@ -1237,11 +1280,9 @@ export class OrderService {
 | `@RequireRoles('admin', 'editor')`   | `src/modules/role`     | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
 | `@RequirePermissions({...})`         | `src/modules/role/api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
 
-### Logging Decorators
+### Logging
 
-| Decorator                                                              | Import From           | Effect                                                                                                                                                             |
-| ---------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@LogActivity({ action, description, resourceType?, getResourceId? })` | `src/modules/log/api` | Records user action to activity log on success **and** failure. Only works on authenticated (non-`@Public()`) endpoints — use service events for public endpoints. |
+There is no logging decorator. Activity/audit logs are written by calling `LogQueueService.enqueueActivityLog(...)` / `enqueueAuditLog(...)` directly from the service method performing the write — see §11.
 
 ### Common Decorators
 
@@ -1328,64 +1369,78 @@ SMS_POH_API_SENDER_ID=...
 
 ### The `forge` CLI
 
-The project ships a purpose-built CLI at `cli/` that wraps all database operations under a single `forge db` command tree. It is registered as a local binary in `package.json`:
+The project ships a purpose-built CLI at `cli/` that wraps **all** database
+operations under a single `forge db` command tree. It is the sole sanctioned
+way to touch the database — there is no parallel `npm run migration:*` or
+`npm run db:*` path, and no raw `npm run typeorm` escape hatch. It is
+registered as a local binary in `package.json`:
 
 ```json
 "bin": { "forge": "./cli/index.ts" }
 ```
 
-Run it directly with `npx forge` or install locally:
+Run it with `npx forge`:
 
 ```bash
-npx ts-node cli/index.ts db --help
+npx forge db --help
 ```
 
-**Why use `forge` instead of raw `npm run` scripts?**
+**Why a dedicated CLI instead of raw `npm run` / TypeORM CLI scripts?**
 
-|                       | `forge` CLI                                           | `npm run migration:*`                   |
-| --------------------- | ----------------------------------------------------- | --------------------------------------- |
-| Migration output path | Enforced to `src/infrastructure/database/migrations/` | Must be typed manually (full path)      |
-| Naming                | Just pass the name: `AddArticleTable`                 | Full path required                      |
-| Discoverability       | `forge db --help` lists all sub-commands              | Must read `package.json`                |
-| Seeding               | `forge db seed / clear / reset`                       | `npm run db:seed / db:clear / db:reset` |
+| | `forge` CLI |
+| --------------------- | ----------------------------------------------------- |
+| Migration output path | Enforced to `src/infrastructure/database/migrations/` |
+| Naming | Just pass the name: `AddArticleTable` |
+| Discoverability | `forge db --help` lists all sub-commands |
+| Prod safety | `--prod` flag with a confirmation gate on destructive ops |
+
+See [ADR-0012](docs/adr/0012-forge-cli-as-primary-database-tool.md) for the
+full rationale.
 
 ### `forge db` Command Tree
 
 ```
 forge db
 ├── migrate
-│   ├── generate <name>   Generate a migration into src/infrastructure/database/migrations/
-│   ├── run               Apply all pending migrations
-│   └── revert            Revert the last applied migration
-├── seed                  Run all seeders
-├── clear                 Delete all data
-└── reset                 clear + seed in sequence
+│   ├── generate <name>          Generate a migration into src/infrastructure/database/migrations/ (dev only)
+│   ├── run [--prod]             Apply all pending migrations
+│   ├── revert [--prod] [--yes]  Revert the last applied migration
+│   └── status [--prod]          Show applied and pending migrations
+├── seed [--prod]                 Run all seeders
+├── clear [--prod] [--yes]        Delete all data
+└── reset [--prod] [--yes]        clear + seed in sequence
 ```
+
+Every command runs against `src/data-source.ts` via `ts-node` by default. Pass
+`--prod` to instead run against the compiled build
+(`dist/src/data-source.js`, executed with plain `node`/`typeorm` — no
+`ts-node`); `forge` errors immediately if `dist/` hasn't been built yet.
+`migrate generate` never accepts `--prod` — migrations are always generated
+from TypeScript source.
+
+`migrate revert --prod`, `clear --prod`, and `reset --prod` are destructive
+against a production database, so they print the resolved `DB_HOST`/`DB_NAME`
+and require typing `yes` to continue. Pass `-y`/`--yes` to skip the prompt
+(e.g. in CI).
 
 ### Migration Commands
 
 ```bash
 # Generate a new migration — just provide the name, path is enforced automatically
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate AddArticleTable
+npx forge db migrate generate AddArticleTable
 # Creates: src/infrastructure/database/migrations/<timestamp>-AddArticleTable.ts
 
 # Apply all pending migrations
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
+npx forge db migrate run
+npx forge db migrate run --prod
 
 # Revert the last applied migration
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate revert
-```
+npx forge db migrate revert
+npx forge db migrate revert --prod   # prompts for confirmation
 
-Equivalent `npm run` aliases (for quick use in development):
-
-```bash
-npm run migration:generate src/infrastructure/database/migrations/AddArticleTable
-npm run migration:run
-npm run migration:revert
-
-# Production (compiled JS):
-npm run migration:run:prod
-npm run migration:revert:prod
+# Show applied/pending migrations
+npx forge db migrate status
+npx forge db migrate status --prod
 ```
 
 > **Tip:** Always review the generated migration file before running it. TypeORM infers the schema diff but can emit unexpected `DROP COLUMN` statements when column options change.
@@ -1394,21 +1449,15 @@ npm run migration:revert:prod
 
 ```bash
 # Seed the database (creates roles, permissions, superadmin, settings)
-npx ts-node -r tsconfig-paths/register cli/index.ts db seed
+npx forge db seed
 
 # Clear all data
-npx ts-node -r tsconfig-paths/register cli/index.ts db clear
+npx forge db clear
+npx forge db clear --prod   # prompts for confirmation
 
 # Reset = clear + seed (sequential, exits on clear failure)
-npx ts-node -r tsconfig-paths/register cli/index.ts db reset
-```
-
-Equivalent `npm run` aliases:
-
-```bash
-npm run db:seed
-npm run db:clear
-npm run db:reset
+npx forge db reset
+npx forge db reset --prod --yes   # non-interactive, e.g. CI
 ```
 
 **Seeding creates:**
@@ -1561,7 +1610,7 @@ Never perform blocking or CPU-heavy work synchronously in the request path — i
 
 | Mistake                                                                  | Correct Approach                                                                                                 |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Using `@LogActivity` on a `@Public()` endpoint                           | `@Public()` endpoints have no `request.user` — emit `ActivityLogEvent`/`AuditLogEvent` from the service instead  |
+| Writing audit/activity logs synchronously from a controller              | Call `LogQueueService.enqueueActivityLog()`/`enqueueAuditLog()` from the service, only after the write succeeds  |
 | Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `api.ts`                                               |
 | Domain service importing an entity or event from `api.ts`                | Entities and events live in `index.ts` — `api.ts` has no entities                                                |
 | Domain service importing a service from `index.ts`                       | Services live in `api.ts` — use `import { FooService } from 'src/modules/foo/api'`                               |

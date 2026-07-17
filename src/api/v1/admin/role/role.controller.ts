@@ -10,10 +10,12 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { RoleDeletionService } from 'src/modules/admin/api';
-import { LogAction, LogActivity } from 'src/modules/log/api';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth';
 import {
   CreateRoleDto,
   FilterRoleDto,
@@ -53,27 +55,25 @@ export class RoleController {
   }
 
   @Post()
-  @LogActivity({
-    action: LogAction.CREATE,
-    description: 'Admin created a role',
-    resourceType: 'Role',
-  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'create' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'create' },
   )
-  async create(@Body() createRoleDto: CreateRoleDto) {
-    const role = await this.roleService.create(createRoleDto);
+  async create(
+    @Body() createRoleDto: CreateRoleDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    const role = await this.roleService.create(
+      createRoleDto,
+      admin.id,
+      request,
+    );
     if (!role) throw new NotFoundException('Role creation failed');
     return role;
   }
 
   @Patch(':id')
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'Admin updated a role',
-    resourceType: 'Role',
-  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'update' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'update' },
@@ -81,24 +81,30 @@ export class RoleController {
   async update(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() updateRoleDto: UpdateRoleDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
   ) {
-    const role = await this.roleService.update(id, updateRoleDto);
+    const role = await this.roleService.update(
+      id,
+      updateRoleDto,
+      admin.id,
+      request,
+    );
     if (!role) throw new NotFoundException('Role not found');
     return role;
   }
 
   @Delete(':id')
   @HttpCode(200)
-  @LogActivity({
-    action: LogAction.DELETE,
-    description: 'Admin deleted a role',
-    resourceType: 'Role',
-  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'delete' },
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'delete' },
   )
-  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    await this.roleDeletionService.deleteRole(id);
+  async remove(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    await this.roleDeletionService.deleteRole(id, admin.id, request);
   }
 }

@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Admin } from 'src/modules/admin';
 import { AdminService } from 'src/modules/admin/api';
-import { CHECK_OWNERSHIP_KEY } from '../decorators/check-ownership.decorator';
+import { CHECK_OWNERSHIP_KEY } from '../constants/check-ownership-key.constant';
 import { AuthenticatedUser } from '../interfaces/user.interface';
 
 @Injectable()

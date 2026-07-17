@@ -9,11 +9,13 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
 import { ResolvePresignedUrls } from 'src/common/decorators';
 import { imageInterceptorOptions } from 'src/common/config';
 import {
@@ -22,7 +24,7 @@ import {
   FilterAdminDto,
   UpdateAdminDto,
 } from 'src/modules/admin/api';
-import { LogAction, LogActivity } from 'src/modules/log/api';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth';
 import {
   PermissionModule,
   PermissionsGuard,
@@ -35,11 +37,6 @@ export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
   @Post()
-  @LogActivity({
-    action: LogAction.CREATE,
-    description: 'Admin created another admin',
-    resourceType: 'Admin',
-  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'create' },
     { module: PermissionModule.ADMIN_LIST, permission: 'create' },
@@ -48,8 +45,10 @@ export class AdminController {
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() createAdminDto: CreateAdminDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
   ) {
-    return this.adminService.create(createAdminDto, file);
+    return this.adminService.create(createAdminDto, file, admin.id, request);
   }
 
   @Get()
@@ -73,11 +72,6 @@ export class AdminController {
   }
 
   @Patch(':id')
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'Admin updated another admin',
-    resourceType: 'Admin',
-  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'update' },
     { module: PermissionModule.ADMIN_LIST, permission: 'update' },
@@ -87,22 +81,29 @@ export class AdminController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() updateAdminDto: UpdateAdminDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
   ) {
-    return this.adminService.update(id, updateAdminDto, file);
+    return this.adminService.update(
+      id,
+      updateAdminDto,
+      file,
+      admin.id,
+      request,
+    );
   }
 
   @Delete(':id')
   @HttpCode(200)
-  @LogActivity({
-    action: LogAction.DELETE,
-    description: 'Admin deleted another admin',
-    resourceType: 'Admin',
-  })
   @RequirePermissions(
     { module: PermissionModule.ADMIN, permission: 'delete' },
     { module: PermissionModule.ADMIN_LIST, permission: 'delete' },
   )
-  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    await this.adminService.remove(id);
+  async remove(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    await this.adminService.remove(id, admin.id, request);
   }
 }

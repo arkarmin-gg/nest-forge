@@ -3,8 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ModuleEntity } from '../entities/module.entity';
 import { Permission } from '../entities/permission.entity';
-import { ActionType } from '../constants/action-type.enum';
-import { PermissionModule } from '../constants/permission-module.enum';
+import { ActionType } from '../enums/action-type.enum';
+import { PermissionModule } from '../enums/permission-module.enum';
 import { RolePermission } from '../entities/role-permission.entity';
 import { Role } from '../entities/role.entity';
 

@@ -11,7 +11,7 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
-import { LoginProvider } from '../constants/login-provider.enum';
+import { LoginProvider } from '../enums/login-provider.enum';
 
 @Entity('users')
 @Index('UQ_users_phone_active', ['phone'], {
