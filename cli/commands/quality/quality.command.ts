@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { normalizeToolOutput, writeQualityBaseline } from './baseline';
 import { runQualityCheck } from './check';
-import { printHumanReport } from './reporter';
+import { filterResultToFailures, printHumanReport } from './reporter';
 import { QUALITY_RULES } from './rules';
 import { runNpmScript } from './subprocess';
 import { QualityCheckOptions } from './types';
@@ -17,6 +17,12 @@ function printRules(): void {
   }));
 
   console.table(rows);
+}
+
+function isOnlyFailRequested(options: QualityCheckOptions): boolean {
+  return (
+    options.onlyFail === true || process.env.npm_config_only_fail === 'true'
+  );
 }
 
 export function registerQualityCommand(program: Command): void {
@@ -54,16 +60,20 @@ export function registerQualityCommand(program: Command): void {
     .option('--base <ref>', 'Base ref for diff mode', 'main')
     .option('--json', 'Print stable JSON output')
     .option('--fail-on-warn', 'Fail when warning findings are present')
+    .option('--only-fail', 'Only list failed findings')
     .option('--no-build', 'Skip the build subprocess gate')
     .option('--rule <id>', 'Run only one rule ID')
     .action(async (opts: QualityCheckOptions) => {
       try {
         const result = await runQualityCheck(opts);
+        const report = isOnlyFailRequested(opts)
+          ? filterResultToFailures(result)
+          : result;
 
         if (opts.json) {
-          console.log(JSON.stringify(result, null, 2));
+          console.log(JSON.stringify(report, null, 2));
         } else {
-          printHumanReport(result);
+          printHumanReport(report);
         }
 
         process.exit(result.status === 'failed' ? 1 : 0);

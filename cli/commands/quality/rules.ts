@@ -45,7 +45,7 @@ const SEMANTIC_RULES: QualityRule[] = [
     defaultLevel: 'review',
     source: 'ARCHITECTURE.md §5 / ADR-0013',
     description:
-      'Domain services import services from public-api.ts and entities/events from index.ts.',
+      'Domain services import services from public-api.ts and entities/events from index.ts when that barrel exists.',
   },
   {
     id: 'ARCH-06',

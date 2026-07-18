@@ -119,8 +119,8 @@ Checklist:
 - Injected dependencies are `private readonly` or `readonly`.
 - Multi-write operations use `@Transactional()` and `this.txHost.tx`.
 - Events are used for decoupled cross-module side effects where appropriate.
-- `index.ts` and `public-api.ts` remain named-export, side-effect-free boundary
-  contracts with no symbol exported from both.
+- `public-api.ts` remains a named-export, side-effect-free boundary contract.
+  `index.ts` is optional; when present, no symbol is exported from both barrels.
 - No nested domain barrels such as `dto/index.ts` or `services/index.ts`.
 
 Bad:

@@ -15,15 +15,17 @@ service cycles through public re-export files.
 At the same time, `nest-forge` is a modular monolith. Cross-module imports are
 not just path choices; they express whether a caller is depending on another
 module's public contract or on its internals. The existing architecture already
-uses root `index.ts` and `public-api.ts` files to make that public surface explicit,
-and ESLint blocks deep cross-module imports into module internals.
+uses root `public-api.ts` files, plus optional `index.ts` files for
+domain-facing exports, to make that public surface explicit, and ESLint blocks
+deep cross-module imports into module internals.
 
 ## Decision
 
 Barrel files are allowed only when they represent an architectural boundary.
 They are not allowed merely to shorten import paths.
 
-Domain modules keep exactly two root barrels:
+Domain modules always keep a root `public-api.ts` barrel and may also keep a
+root `index.ts` barrel when they have domain-facing exports:
 
 - `index.ts` is the module wiring and domain surface: module class, entities,
   events, provider guards, and domain types.
@@ -32,12 +34,12 @@ Domain modules keep exactly two root barrels:
   not HTTP-only; other domain services may import another module's services
   from `public-api.ts`.
 
-The two barrels have a strict no-overlap rule: each exported symbol has exactly
-one canonical public home. Controllers import from `public-api.ts`, never from
-`index.ts`. Domain services import another module's services from `public-api.ts`, and
-entities/events/domain types from `index.ts`. Domain services should not reuse
-another module's HTTP DTOs unless that DTO has deliberately become a
-cross-module service contract.
+When both barrels exist, they have a strict no-overlap rule: each exported
+symbol has exactly one canonical public home. Controllers import from
+`public-api.ts`, never from `index.ts`. Domain services import another module's
+services from `public-api.ts`, and entities/events/domain types from `index.ts`
+when that barrel exists. Domain services should not reuse another module's HTTP
+DTOs unless that DTO has deliberately become a cross-module service contract.
 
 All barrel files follow the same hygiene rules:
 
@@ -48,8 +50,8 @@ All barrel files follow the same hygiene rules:
 
 Nested barrels inside domain modules are not allowed. `enums/`, `interfaces/`,
 `constants/`, `dto/`, `services/`, and similar implementation folders import
-by direct relative file path. The root `index.ts`/`public-api.ts` files remain the
-only module boundary barrels.
+by direct relative file path. The root `public-api.ts` and optional `index.ts`
+files are the only module boundary barrels.
 
 `common/` is a technical shared layer, not a domain boundary. It may keep
 subfolder barrels such as `src/common/utils` and `src/common/dto`, but those
@@ -69,8 +71,8 @@ convenience escape hatch.
   rules instead of one explicit import surface.
 - **Use a single root barrel per module.** Rejected: controllers, application
   services, module wiring, entities, and events have different audiences.
-  Keeping `index.ts` and `public-api.ts` separate prevents accidental leakage between
-  those surfaces.
+  Keeping `index.ts` and `public-api.ts` separate when both are needed prevents
+  accidental leakage between those surfaces.
 - **Allow convenience barrels in subfolders.** Rejected for domain modules:
   nested barrels add indirection without expressing a module boundary, and make
   accidental public API growth harder to spot in review.
@@ -78,7 +80,7 @@ convenience escape hatch.
   `api.ts` was easy to misread as HTTP-only, while the barrel is also used by
   domain services that call another module's public service. `public-api.ts`
   makes the boundary role explicit at the import site without changing the
-  two-barrel architecture.
+  boundary-barrel architecture.
 - **Use `contract.ts`.** Rejected: "contract" is too broad for a file that
   intentionally exports services, DTOs, route decorators, and controller-facing
   types.

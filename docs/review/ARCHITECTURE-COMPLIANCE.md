@@ -40,8 +40,8 @@ Security / Operations & Quality) · **type** (`mechanical` = a command finds it;
 | **ARCH-01** | A domain service must not inject another module's repository (`@InjectRepository(ForeignEntity)`). Call that module's exported service instead.                                                                                    | semantic              | high     | §4 Zone 2 / ADR-0004             |
 | **ARCH-02** | Controllers contain zero business logic — no repository access, `save`, `bcrypt`, branching, or data transformation. They call a service and return.                                                                               | semantic              | high     | §4 Zone 1 / §20                  |
 | **ARCH-03** | Controllers import from a module's `public-api.ts` only — never `index.ts`, never a deep path (`/services/*`, `/dto/*`, `/entities/*`).                                                                                            | mechanical + semantic | high     | §5 / ADR-0013                    |
-| **ARCH-04** | Domain services import _services_ from `public-api.ts` and _entities/events_ from `index.ts`. No symbol from the wrong barrel. HTTP DTO reuse across modules requires an intentional service-contract reason.                      | semantic              | medium   | §5 / ADR-0013                    |
-| **ARCH-05** | Every domain module under `src/modules/` exposes both `index.ts` and `public-api.ts`, with no symbol exported from both. Barrels use named exports only, `export type` for type-only symbols, and contain no runtime side effects. | mechanical            | medium   | §5 / ADR-0013                    |
+| **ARCH-04** | Domain services import _services_ from `public-api.ts` and _entities/events_ from `index.ts` when that barrel exists. No symbol from the wrong barrel. HTTP DTO reuse across modules requires an intentional service-contract reason. | semantic              | medium   | §5 / ADR-0013                    |
+| **ARCH-05** | Every domain module under `src/modules/` exposes `public-api.ts`; `index.ts` is optional for domain-facing exports. When both exist, no symbol is exported from both. Barrels use named exports only, `export type` for type-only symbols, and contain no runtime side effects. | mechanical            | medium   | §5 / ADR-0013                    |
 | **ARCH-06** | App-zone endpoints (`src/api/v1/app/**`) map the entity to a whitelist response DTO via `plainToInstance(Dto, x, { excludeExtraneousValues: true })` and derive the target from `@CurrentUser()` — never a `:id` path param.       | semantic              | high     | §4 / §7 / ADR-0006               |
 | **ARCH-07** | An endpoint restricted to one subject type uses `@UseGuards(SubjectGuard)` + `@RequireSubject('USER'\|'ADMIN')`. The whole `app/` zone is USER-only.                                                                               | semantic              | medium   | §8 / ADR-0006                    |
 | **ARCH-08** | No circular import dependencies between files (e.g. service A → B → A through barrels). `*.entity.ts` files are exempt — bidirectional TypeORM relations form intentional, lazily-resolved cycles.                                 | mechanical            | medium   | §5 (Automated Enforcement) / §21 |
@@ -129,14 +129,13 @@ grep -rnE "synchronize:\s*true" src --include="*.ts"
 # ActivityLog, AuditLog, and RolePermission are current documented exceptions)
 grep -rLE "extends (BaseEntity|SoftDeletableEntity)" src/modules/**/entities/*.entity.ts
 
-# ARCH-05 — every module has both barrels (a module missing either is a violation)
+# ARCH-05 — every module has public-api.ts; index.ts is optional
 for d in src/modules/*/; do
-  [ -f "$d/index.ts" ] || echo "missing index.ts: $d"
   [ -f "$d/public-api.ts" ]   || echo "missing public-api.ts: $d"
 done
 
 # ARCH-05 — wildcard exports in sanctioned barrels (should be named exports only)
-grep -rnE "export[[:space:]]+\\*" src/modules/*/index.ts src/modules/*/public-api.ts src/common/*/index.ts
+find src/modules src/common \( -path "src/modules/*/index.ts" -o -path "src/modules/*/public-api.ts" -o -path "src/common/*/index.ts" \) -exec grep -nHE "export[[:space:]]+\\*" {} +
 
 # ARCH-09 — unsanctioned barrels (review hits; module root barrels and common subfolder barrels are allowed)
 find src/modules src/common -path "src/modules/*/index.ts" -prune -o -path "src/modules/*/public-api.ts" -prune -o -path "src/common/*/index.ts" -prune -o -name "index.ts" -print

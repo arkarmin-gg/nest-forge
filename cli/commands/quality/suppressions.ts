@@ -1,12 +1,7 @@
 import { readFileSync } from 'fs';
 
 import { filesForRule } from './rules/rule-utils';
-import {
-  FindingLevel,
-  QualityContext,
-  QualityFinding,
-  QualityRule,
-} from './types';
+import { QualityContext, QualityFinding, QualityRule } from './types';
 
 interface Suppression {
   file: string;
@@ -54,17 +49,27 @@ function parseRuleIds(rawRuleIds: string): string[] {
     .filter(Boolean);
 }
 
+function getSuppressionCommentText(lineText: string): string | undefined {
+  const trimmed = lineText.trim();
+  if (trimmed.startsWith('//')) return trimmed.slice(2).trim();
+  if (trimmed.startsWith('*')) return trimmed.slice(1).trim();
+  if (trimmed.startsWith('/*')) return trimmed.slice(2).trim();
+
+  return undefined;
+}
+
 function parseSuppressionLine(
   file: string,
   lineText: string,
   line: number,
   validRuleIds: Set<string>,
 ): { suppression?: Suppression; finding?: QualityFinding } | undefined {
-  if (!lineText.includes('forge-quality-disable')) return undefined;
+  const commentText = getSuppressionCommentText(lineText);
+  if (!commentText?.includes('forge-quality-disable')) return undefined;
 
   const match =
     /forge-quality-disable-(next-line|file)\s+(.+?)\s+--\s+(.+)$/.exec(
-      lineText,
+      commentText,
     );
 
   if (!match) {

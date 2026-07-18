@@ -245,16 +245,16 @@ Each module contains:
 - `enums/` — TS enums, one per file (see below)
 - `interfaces/` — Exported, reusable domain interfaces, one per file (see below)
 - `constants/` — Exported primitive constants — Reflector metadata keys, event-name strings, config values — one per file (see below)
-- `index.ts` — Module wiring and domain types (module class, entities, events)
+- `index.ts` — Optional module wiring and domain types (module class, entities, events)
 - `public-api.ts` — Callable public application surface: services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
 
 **Rules:**
 
 - A module **only accesses its own entities**
 - To use another module's data, call that module's **exported service**
-- Always expose both `index.ts` and `public-api.ts` barrels — no symbol appears in both
+- Always expose `public-api.ts`; add `index.ts` only when the module has domain-facing exports — no symbol appears in both
 - Controllers always import from `public-api.ts` — services, DTOs, and route decorators live there
-- Domain services import services from `public-api.ts`; entities and events from `index.ts`
+- Domain services import services from `public-api.ts`; entities and events from `index.ts` when that barrel exists
 - Barrels are architectural boundary contracts only, never convenience aggregators
 
 #### `enums/`, `interfaces/`, `constants/` — One Concern Per Folder
@@ -280,7 +280,7 @@ modules/log/
 - `interfaces/*.interface.ts` — **exported** interfaces meant to be imported elsewhere (a guard, a DTO, another service). A file-private, non-exported interface that shapes a single function's options or a seeder's local config (e.g. `RoleConfig` in `role.seeder.ts`) stays right where it's declared — moving it would only be relocation for its own sake, since nothing outside that file could ever import it.
 - `constants/*.constant.ts` — exported primitive constants: `SetMetadata` Reflector keys (`PERMISSIONS_KEY`), queue names (`LOG_QUEUE`, `EMAIL_NOTIFICATION_QUEUE`), and standalone config values (job retry counts, backoff delays). Even though a constant is only ever read by one queue registration, it still gets its own file here rather than staying inline — this keeps the "what enums/interfaces/constants does this module define" question answerable by listing three folders, not by reading every service and processor file.
 
-**Barrels:** none of these three folders gets its own `index.ts`. Import by direct file path (`from '../enums/log-status.enum'`) — the module-root `index.ts`/`public-api.ts` remains the only real barrel boundary (per the two-barrel rule above). A module only gets the folders it needs — no empty `enums/` in a module with no enums.
+**Barrels:** none of these three folders gets its own `index.ts`. Import by direct file path (`from '../enums/log-status.enum'`) — module-root `public-api.ts` and optional `index.ts` remain the only real barrel boundaries (per the boundary-barrel rule above). A module only gets the folders it needs — no empty `enums/` in a module with no enums.
 
 ### Zone 3: `infrastructure/` — Technical Layer
 
@@ -323,9 +323,9 @@ modules/
     └── public-api.ts                       ← Callable public application surface
 ```
 
-### `index.ts` vs `public-api.ts` — Two Barrels, Two Audiences
+### `index.ts` vs `public-api.ts` — Boundary Barrels, Two Audiences
 
-Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `public-api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home. These barrels are architectural boundary contracts, not shortcuts for avoiding relative paths inside a module (see ADR-0013).
+Every module exposes `public-api.ts`. A module may also expose `index.ts` when it has domain-facing exports such as the module class, entities, events, or domain interfaces. When both barrels exist, they have a **strict no-overlap rule**: if a symbol is in `public-api.ts` it must not appear in `index.ts`, and vice versa. Each exported symbol has exactly one canonical home. These barrels are architectural boundary contracts, not shortcuts for avoiding relative paths inside a module (see ADR-0013).
 
 |                   | `index.ts`                                                                  | `public-api.ts`                                                                       |
 | ----------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -354,7 +354,7 @@ export { UpdateArticleDto } from './dto/update-article.dto';
 export { FilterArticleDto } from './dto/filter-article.dto';
 // No ArticleModule — controllers don't register modules
 // No Article entity — controllers never handle raw entities
-// No events — domain services import those from index.ts
+// No events — domain services import those from index.ts when that barrel exists
 ```
 
 **Import rules:**
@@ -1371,13 +1371,13 @@ The non-negotiable architectural habits remain:
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | Writing audit/activity logs synchronously from a controller              | Call `LogQueueService.enqueueActivityLog()`/`enqueueAuditLog()` from the service, only after the write succeeds         |
 | Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `public-api.ts`                                               |
-| Domain service importing an entity or event from `public-api.ts`         | Entities and events live in `index.ts` — `public-api.ts` has no entities                                                |
+| Domain service importing an entity or event from `public-api.ts`         | Entities and events live in `index.ts` when that barrel exists — `public-api.ts` has no entities                        |
 | Domain service importing a service from `index.ts`                       | Services live in `public-api.ts` — use `import { FooService } from 'src/modules/foo/public-api'`                        |
 | Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `public-api.ts`; module class/entities/events → `index.ts` |
 | Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `public-api.ts` for services/DTOs, `index.ts` for entities/events                       |
 | Using wildcard exports in a barrel (`export * from ...`)                 | Use named exports only so public API growth is explicit                                                                 |
 | Importing a module's own barrel from inside that same module             | Use relative direct imports (`../entities/user.entity`) to avoid self-cycles                                            |
-| Adding nested domain barrels (`dto/index.ts`, `services/index.ts`)       | Only module-root `index.ts`/`public-api.ts` are domain boundary barrels                                                 |
+| Adding nested domain barrels (`dto/index.ts`, `services/index.ts`)       | Only module-root `public-api.ts` and optional `index.ts` are domain boundary barrels                                    |
 | Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                                |
 | Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                             |
 | Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                         |
@@ -1673,7 +1673,7 @@ Adding a module?        Follow the 10-step checklist in Section 22.
 New endpoint?           Controller calls service. Zero logic in controller.
 Writing a controller?   Import services/DTOs/decorators from public-api.ts only.
 Need another service?   Import it from public-api.ts — services live there, not index.ts.
-Need an entity/event?   Import from index.ts — entities and events live there.
+Need an entity/event?   Import from index.ts when it exists — entities and events do not live in public-api.ts.
 DB change?              Edit entity → forge db migrate generate <Name> → forge db migrate run.
 Send email/SMS?         Queue it via NotificationService. Never send inline.
 File upload?            Store S3 key in DB. Use @ResolvePresignedUrls on GET.

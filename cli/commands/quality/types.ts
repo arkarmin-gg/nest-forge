@@ -69,6 +69,7 @@ export interface QualityCheckOptions {
   base: string;
   json?: boolean;
   failOnWarn?: boolean;
+  onlyFail?: boolean;
   build?: boolean;
   rule?: string;
 }

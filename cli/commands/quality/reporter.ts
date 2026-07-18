@@ -32,6 +32,18 @@ export function createSummary(findings: QualityFinding[]) {
   );
 }
 
+export function filterResultToFailures(result: QualityResult): QualityResult {
+  const findings = result.findings.filter(
+    (finding) => finding.level === 'fail',
+  );
+
+  return {
+    ...result,
+    findings,
+    summary: createSummary(findings),
+  };
+}
+
 export function printHumanReport(result: QualityResult): void {
   console.log('Forge Quality');
   console.log('');

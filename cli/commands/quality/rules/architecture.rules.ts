@@ -65,7 +65,7 @@ const arch05: QualityRule = {
   defaultLevel: 'fail',
   source: 'ARCHITECTURE.md §5 / ADR-0013',
   description:
-    'Domain modules expose index.ts and public-api.ts with named, non-overlapping exports.',
+    'Domain modules expose public-api.ts; optional index.ts barrels use named, non-overlapping exports.',
   async run(context) {
     const moduleDirs =
       context.scope.mode === 'audit'
@@ -77,15 +77,6 @@ const arch05: QualityRule = {
       const indexFile = `${moduleDir}/index.ts`;
       const publicApiFile = `${moduleDir}/public-api.ts`;
 
-      if (!existsSync(indexFile)) {
-        findings.push(
-          createFinding(arch05, 'Domain module is missing index.ts.', {
-            file: indexFile,
-            fix: 'Add a named-export domain barrel for entities, events, enums, and constants.',
-          }),
-        );
-      }
-
       if (!existsSync(publicApiFile)) {
         findings.push(
           createFinding(arch05, 'Domain module is missing public-api.ts.', {
@@ -95,25 +86,28 @@ const arch05: QualityRule = {
         );
       }
 
-      if (!existsSync(indexFile) || !existsSync(publicApiFile)) return findings;
+      if (!existsSync(publicApiFile)) return findings;
 
-      const indexExports = getExportedNames(indexFile);
       const publicApiExports = getExportedNames(publicApiFile);
 
-      for (const line of indexExports.wildcardLines) {
+      for (const line of publicApiExports.wildcardLines) {
         findings.push(
-          createFinding(arch05, 'Wildcard export found in index.ts.', {
-            file: indexFile,
+          createFinding(arch05, 'Wildcard export found in public-api.ts.', {
+            file: publicApiFile,
             line,
             fix: 'Use named exports only.',
           }),
         );
       }
 
-      for (const line of publicApiExports.wildcardLines) {
+      if (!existsSync(indexFile)) return findings;
+
+      const indexExports = getExportedNames(indexFile);
+
+      for (const line of indexExports.wildcardLines) {
         findings.push(
-          createFinding(arch05, 'Wildcard export found in public-api.ts.', {
-            file: publicApiFile,
+          createFinding(arch05, 'Wildcard export found in index.ts.', {
+            file: indexFile,
             line,
             fix: 'Use named exports only.',
           }),
