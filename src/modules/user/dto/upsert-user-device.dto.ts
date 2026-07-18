@@ -10,8 +10,6 @@ import {
 } from 'class-validator';
 import { UserDevicePlatform } from '../enums/user-device-platform.enum';
 
-const FCM_TOKEN_MAX_LENGTH = 4096;
-
 function IsNullableFcmToken(validationOptions?: ValidationOptions) {
   return (object: object, propertyName: string) => {
     registerDecorator({
@@ -23,14 +21,10 @@ function IsNullableFcmToken(validationOptions?: ValidationOptions) {
         validate(value: unknown) {
           if (value === null) return true;
 
-          return (
-            typeof value === 'string' &&
-            value.length > 0 &&
-            value.length <= FCM_TOKEN_MAX_LENGTH
-          );
+          return typeof value === 'string' && value.length > 0;
         },
         defaultMessage(args: ValidationArguments) {
-          return `${args.property} must be null or a non-empty string not exceeding ${FCM_TOKEN_MAX_LENGTH} characters`;
+          return `${args.property} must be null`;
         },
       },
     });
