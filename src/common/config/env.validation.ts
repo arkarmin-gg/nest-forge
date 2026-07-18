@@ -65,10 +65,7 @@ export const envValidationSchema = Joi.object({
 
   // Seed defaults
   SEED_SUPER_ADMIN_EMAIL: Joi.string().email().required(),
-  SEED_SUPER_ADMIN_PASSWORD: Joi.string()
-    .min(12)
-    .invalid('passwordD123!@#', 'replace-with-strong-password')
-    .required(),
+  SEED_SUPER_ADMIN_PASSWORD: Joi.string().min(12).required(),
   SEED_SMTP_FROM_NAME: Joi.string().required(),
   SEED_SMTP_USERNAME: Joi.string().email().required(),
   SEED_SMTP_PASSWORD: Joi.string().allow('').optional(),

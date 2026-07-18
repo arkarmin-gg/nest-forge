@@ -9,9 +9,12 @@ export const winstonConfig = {
       level: 'debug',
       format: winston.format.combine(
         winston.format.timestamp(),
-        nestWinstonModuleUtilities.format.nestLike(process.env.APP_NAME, {
-          prettyPrint: true,
-        }),
+        nestWinstonModuleUtilities.format.nestLike(
+          process.env.APP_NAME ?? 'nest-forge',
+          {
+            prettyPrint: true,
+          },
+        ),
       ),
     }),
 

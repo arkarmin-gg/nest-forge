@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 process.env.TZ = 'UTC';
 
 import type { Server } from 'node:http';
