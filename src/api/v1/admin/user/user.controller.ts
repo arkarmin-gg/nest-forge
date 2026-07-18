@@ -27,7 +27,6 @@ import {
 import {
   CreateUserDto,
   FilterUserDto,
-  LoginProvider,
   UpdateUserDto,
   UserService,
 } from 'src/modules/user/public-api';
@@ -49,12 +48,7 @@ export class UserController {
     @CurrentUser() admin: AuthenticatedUser,
     @Req() request: Request,
   ) {
-    return this.userService.create(
-      { ...createUserDto, loginProvider: LoginProvider.SMS },
-      file,
-      admin.id,
-      request,
-    );
+    return this.userService.create(createUserDto, file, admin.id, request);
   }
 
   @Get()

@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
@@ -91,6 +92,14 @@ export class RoleService {
     });
   }
 
+  async findOneOrFail(id: string): Promise<Role> {
+    const role = await this.findOne(id);
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+    return role;
+  }
+
   /**
    * Public entrypoint for role creation. The audit-log enqueue happens here,
    * outside the `@Transactional()` boundary of `createInTransaction`, so it
@@ -127,6 +136,18 @@ export class RoleService {
       });
       throw error;
     }
+  }
+
+  async createOrFail(
+    createRoleDto: CreateRoleDto,
+    adminId: string,
+    request: Request,
+  ): Promise<Role> {
+    const role = await this.create(createRoleDto, adminId, request);
+    if (!role) {
+      throw new NotFoundException('Role creation failed');
+    }
+    return role;
   }
 
   @Transactional()
@@ -213,6 +234,19 @@ export class RoleService {
       });
       throw error;
     }
+  }
+
+  async updateOrFail(
+    id: string,
+    updateRoleDto: UpdateRoleDto,
+    adminId: string,
+    request: Request,
+  ): Promise<Role> {
+    const role = await this.update(id, updateRoleDto, adminId, request);
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+    return role;
   }
 
   @Transactional()

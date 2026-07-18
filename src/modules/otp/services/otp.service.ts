@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { TransactionHost } from '@nestjs-cls/transactional';
+import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
 import { Cron } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
 import { addMinutes, isExpired, OTP_TTL_MINUTES } from 'src/common/utils';
 import { sha256Hex } from 'src/common/utils';
-import { Brackets, In, LessThan, Repository } from 'typeorm';
+import { Brackets, In, LessThan } from 'typeorm';
 import { OtpPurpose } from '../enums/otp-purpose.enum';
 import { OtpStatus } from '../enums/otp-status.enum';
 import { OtpRecord } from '../entities/otp-record.entity';
@@ -13,8 +14,7 @@ export class OtpService {
   private readonly logger = new Logger(OtpService.name);
 
   constructor(
-    @InjectRepository(OtpRecord)
-    private readonly otpRecordRepository: Repository<OtpRecord>,
+    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
   ) {}
 
   async create(opts: {
@@ -28,7 +28,7 @@ export class OtpService {
   }): Promise<OtpRecord> {
     const expiresAt = addMinutes(opts.ttlMinutes ?? OTP_TTL_MINUTES);
 
-    const record = this.otpRecordRepository.create({
+    const record = this.txHost.tx.create(OtpRecord, {
       purpose: opts.purpose,
       codeHash: sha256Hex(opts.code),
       userId: opts.userId ?? null,
@@ -40,7 +40,7 @@ export class OtpService {
       maxAttempts: opts.maxAttempts ?? 3,
     });
 
-    return this.otpRecordRepository.save(record);
+    return this.txHost.tx.save(OtpRecord, record);
   }
 
   async findPending(opts: {
@@ -49,7 +49,8 @@ export class OtpService {
     adminId?: string;
   }): Promise<OtpRecord | null> {
     // codeHash is `select: false`; re-select it because verify() compares it.
-    const qb = this.otpRecordRepository
+    const qb = this.txHost.tx
+      .getRepository(OtpRecord)
       .createQueryBuilder('otp')
       .addSelect('otp.codeHash')
       .where('otp.purpose = :purpose', { purpose: opts.purpose })
@@ -72,7 +73,7 @@ export class OtpService {
     userId?: string;
     adminId?: string;
   }): Promise<OtpRecord | null> {
-    return this.otpRecordRepository.findOne({
+    return this.txHost.tx.findOne(OtpRecord, {
       where: {
         purpose: opts.purpose,
         status: opts.status,
@@ -86,7 +87,8 @@ export class OtpService {
     subjectId: string,
     purpose: OtpPurpose,
   ): Promise<OtpRecord | null> {
-    return this.otpRecordRepository
+    return this.txHost.tx
+      .getRepository(OtpRecord)
       .createQueryBuilder('otp')
       .addSelect('otp.codeHash')
       .where(
@@ -109,25 +111,25 @@ export class OtpService {
   async verify(record: OtpRecord, code: string): Promise<void> {
     if (isExpired(record.expiresAt)) {
       record.status = OtpStatus.EXPIRED;
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Verification code has expired');
     }
 
     if (record.attempts >= record.maxAttempts) {
       record.status = OtpStatus.EXPIRED;
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Maximum verification attempts exceeded');
     }
 
     record.attempts += 1;
 
     if (record.codeHash !== sha256Hex(code)) {
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Invalid verification code');
     }
 
     record.status = OtpStatus.VERIFIED;
-    await this.otpRecordRepository.save(record);
+    await this.saveRecord(record);
   }
 
   async validateLoginCode(opts: {
@@ -137,7 +139,8 @@ export class OtpService {
   }): Promise<boolean> {
     const codeHash = sha256Hex(opts.code);
 
-    const record = await this.otpRecordRepository
+    const record = await this.txHost.tx
+      .getRepository(OtpRecord)
       .createQueryBuilder('otp')
       .addSelect('otp.codeHash')
       .where('otp.adminId = :adminId', { adminId: opts.adminId })
@@ -150,25 +153,25 @@ export class OtpService {
 
     if (isExpired(record.expiresAt)) {
       record.status = OtpStatus.EXPIRED;
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       return false;
     }
 
     if (record.attempts >= record.maxAttempts) {
       record.status = OtpStatus.EXPIRED;
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       return false;
     }
 
     record.attempts += 1;
 
     if (record.codeHash !== codeHash) {
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       return false;
     }
 
     record.status = OtpStatus.USED;
-    await this.otpRecordRepository.save(record);
+    await this.saveRecord(record);
     return true;
   }
 
@@ -184,45 +187,45 @@ export class OtpService {
 
     if (isExpired(record.expiresAt)) {
       record.status = OtpStatus.EXPIRED;
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Verification code expired');
     }
 
     if (record.attempts >= record.maxAttempts) {
       record.status = OtpStatus.EXPIRED;
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Maximum verification attempts exceeded');
     }
 
     record.attempts += 1;
 
     if (!record.requestId) {
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Invalid verification code');
     }
 
     try {
       await verifyFn(record.requestId, code);
     } catch {
-      await this.otpRecordRepository.save(record);
+      await this.saveRecord(record);
       throw new BadRequestException('Invalid verification code');
     }
 
     record.status = OtpStatus.VERIFIED;
     record.codeHash = sha256Hex(code);
-    await this.otpRecordRepository.save(record);
+    await this.saveRecord(record);
     return { record };
   }
 
   async markUsed(record: OtpRecord): Promise<void> {
     record.status = OtpStatus.USED;
-    await this.otpRecordRepository.save(record);
+    await this.saveRecord(record);
   }
 
   @Cron('0 2 * * *')
   async cleanupExpiredOtpRecords(): Promise<void> {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const result = await this.otpRecordRepository.delete({
+    const result = await this.txHost.tx.delete(OtpRecord, {
       status: In([OtpStatus.EXPIRED, OtpStatus.USED]),
       createdAt: LessThan(cutoff),
     });
@@ -237,7 +240,8 @@ export class OtpService {
     userId?: string;
     adminId?: string;
   }): Promise<void> {
-    await this.otpRecordRepository.update(
+    await this.txHost.tx.update(
+      OtpRecord,
       {
         purpose: opts.purpose,
         status: opts.status,
@@ -246,5 +250,9 @@ export class OtpService {
       },
       { status: OtpStatus.EXPIRED },
     );
+  }
+
+  private async saveRecord(record: OtpRecord): Promise<OtpRecord> {
+    return this.txHost.tx.save(OtpRecord, record);
   }
 }

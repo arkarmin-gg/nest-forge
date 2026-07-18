@@ -105,13 +105,14 @@ npm run start:dev       # run in watch mode
 npm run build           # compile
 npm run lint            # eslint with --fix
 npm run lint:check      # eslint without mutation
+npm run quality:check   # forge quality gate
 npm run typecheck       # tsc --noEmit
 npm test                # unit tests, when present
 npm run test:e2e        # e2e tests
 ```
 
-Before pushing, run the quality-gate checks: `npm run lint:check`,
-`npm run typecheck`, `npm run build`, and existing relevant tests when present.
+Before pushing, run the quality gate: `npm run quality:check`. For faster local
+feedback while iterating, use `npm run quality:check -- --no-build`.
 
 ## Database & Migrations
 

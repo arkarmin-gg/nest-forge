@@ -284,6 +284,21 @@ export class UserService {
     }
   }
 
+  async updateOwnProfile(
+    currentUserId: string,
+    updateUserDto: UpdateUserDto,
+    file: Express.Multer.File | undefined,
+    request: Request,
+  ): Promise<User> {
+    return this.update(
+      currentUserId,
+      updateUserDto,
+      file,
+      { id: currentUserId, subjectType: 'USER' },
+      request,
+    );
+  }
+
   async remove(id: string, adminId: string, request: Request): Promise<void> {
     try {
       const existingUser = await this.userRepository.findOne({

@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -49,9 +48,7 @@ export class RoleController {
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'read' },
   )
   async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    const role = await this.roleService.findOne(id);
-    if (!role) throw new NotFoundException('Role not found');
-    return role;
+    return this.roleService.findOneOrFail(id);
   }
 
   @Post()
@@ -64,13 +61,7 @@ export class RoleController {
     @CurrentUser() admin: AuthenticatedUser,
     @Req() request: Request,
   ) {
-    const role = await this.roleService.create(
-      createRoleDto,
-      admin.id,
-      request,
-    );
-    if (!role) throw new NotFoundException('Role creation failed');
-    return role;
+    return this.roleService.createOrFail(createRoleDto, admin.id, request);
   }
 
   @Patch(':id')
@@ -84,14 +75,7 @@ export class RoleController {
     @CurrentUser() admin: AuthenticatedUser,
     @Req() request: Request,
   ) {
-    const role = await this.roleService.update(
-      id,
-      updateRoleDto,
-      admin.id,
-      request,
-    );
-    if (!role) throw new NotFoundException('Role not found');
-    return role;
+    return this.roleService.updateOrFail(id, updateRoleDto, admin.id, request);
   }
 
   @Delete(':id')

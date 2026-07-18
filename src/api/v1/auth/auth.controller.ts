@@ -51,22 +51,6 @@ export class AuthController {
     private readonly passwordResetService: PasswordResetService,
   ) {}
 
-  private serializeDate(value: Date | string | null | undefined) {
-    if (value instanceof Date) return value.toISOString();
-    return value;
-  }
-
-  private serializeProfile(user: AuthenticatedUser) {
-    return {
-      ...user,
-      createdAt: this.serializeDate(user.createdAt),
-      updatedAt: this.serializeDate(user.updatedAt),
-      deletedAt: this.serializeDate(user.deletedAt),
-      lastLoginAt: this.serializeDate(user.lastLoginAt),
-      lastLogoutAt: this.serializeDate(user.lastLogoutAt),
-    };
-  }
-
   @Public()
   @Post('admin/login')
   @HttpCode(200)
@@ -143,7 +127,7 @@ export class AuthController {
   @Get('me')
   @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   getProfile(@CurrentUser() user: AuthenticatedUser) {
-    return this.serializeProfile(user);
+    return this.authProfileService.serializeProfile(user);
   }
 
   @Patch('me')

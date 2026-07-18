@@ -23,6 +23,17 @@ export class AuthProfileService {
     private readonly adminAuthService: AdminAuthService,
   ) {}
 
+  serializeProfile(user: AuthenticatedUser): Record<string, unknown> {
+    return {
+      ...user,
+      createdAt: this.serializeDate(user.createdAt),
+      updatedAt: this.serializeDate(user.updatedAt),
+      deletedAt: this.serializeDate(user.deletedAt),
+      lastLoginAt: this.serializeDate(user.lastLoginAt),
+      lastLogoutAt: this.serializeDate(user.lastLogoutAt),
+    };
+  }
+
   async updateProfile(
     user: AuthenticatedUser,
     dto: UpdateProfileDto,
@@ -57,5 +68,12 @@ export class AuthProfileService {
       );
     }
     await this.userAuthService.deleteProfile(user.id, request);
+  }
+
+  private serializeDate(
+    value: Date | string | null | undefined,
+  ): string | null | undefined {
+    if (value instanceof Date) return value.toISOString();
+    return value;
   }
 }

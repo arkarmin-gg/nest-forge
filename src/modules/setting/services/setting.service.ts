@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
+import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
 import { Request } from 'express';
 import { plainToClass } from 'class-transformer';
 import { buildRequestContext } from 'src/common/utils';
@@ -17,8 +17,7 @@ import { SMTPResponseDto } from '../dto/smtp-response.dto';
 @Injectable()
 export class SettingService {
   constructor(
-    @InjectRepository(Setting)
-    private readonly settingRepository: Repository<Setting>,
+    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
     private readonly logQueueService: LogQueueService,
   ) {}
 
@@ -28,57 +27,8 @@ export class SettingService {
     request: Request,
   ): Promise<SMTPResponseDto> {
     try {
-      let oldSettings: Record<string, unknown> = {};
-      try {
-        oldSettings = { ...(await this.getSMTPSettings()) };
-      } catch {
-        // No existing settings — first-time creation, oldValue stays empty
-      }
-
-      const smtpSettings = [
-        { key: 'smtp_host', value: createSMTPDto.smtpHost },
-        { key: 'smtp_port', value: createSMTPDto.smtpPort },
-        { key: 'smtp_secure', value: createSMTPDto.smtpSecure },
-        { key: 'smtp_username', value: createSMTPDto.smtpUsername || '' },
-        { key: 'smtp_password', value: createSMTPDto.smtpPassword || '' },
-        { key: 'smtp_from_email', value: createSMTPDto.smtpFromEmail },
-        { key: 'smtp_from_name', value: createSMTPDto.smtpFromName },
-        { key: 'smtp_enabled', value: createSMTPDto.smtpEnabled },
-      ];
-
-      for (const setting of smtpSettings) {
-        const existingSetting = await this.settingRepository.findOne({
-          where: { key: setting.key },
-        });
-
-        if (existingSetting) {
-          existingSetting.value = setting.value;
-          await this.settingRepository.save(existingSetting);
-        } else {
-          const newSetting = this.settingRepository.create(setting);
-          await this.settingRepository.save(newSetting);
-        }
-      }
-
-      const result = await this.getSMTPSettings();
-      const newSettings = { ...result } as Record<string, unknown>;
-
-      const trackedFields = [
-        'smtpHost',
-        'smtpPort',
-        'smtpSecure',
-        'smtpUsername',
-        'smtpPassword',
-        'smtpFromEmail',
-        'smtpFromName',
-        'smtpEnabled',
-      ];
-
-      const { oldValue, newValue } = diffAuditValues(
-        oldSettings,
-        newSettings,
-        trackedFields,
-      );
+      const { result, oldValue, newValue } =
+        await this.createSMTPSettingsInTransaction(createSMTPDto);
 
       await this.logQueueService.enqueueAuditLog({
         adminId,
@@ -106,6 +56,73 @@ export class SettingService {
   }
 
   async getSMTPSettings(): Promise<SMTPResponseDto> {
+    return this.getSMTPSettingsFromManager();
+  }
+
+  @Transactional()
+  private async createSMTPSettingsInTransaction(
+    createSMTPDto: CreateSMTPDto,
+  ): Promise<{
+    result: SMTPResponseDto;
+    oldValue: Record<string, unknown>;
+    newValue: Record<string, unknown>;
+  }> {
+    let oldSettings: Record<string, unknown> = {};
+    try {
+      oldSettings = { ...(await this.getSMTPSettingsFromManager()) };
+    } catch {
+      // No existing settings — first-time creation, oldValue stays empty
+    }
+
+    const smtpSettings = [
+      { key: 'smtp_host', value: createSMTPDto.smtpHost },
+      { key: 'smtp_port', value: createSMTPDto.smtpPort },
+      { key: 'smtp_secure', value: createSMTPDto.smtpSecure },
+      { key: 'smtp_username', value: createSMTPDto.smtpUsername || '' },
+      { key: 'smtp_password', value: createSMTPDto.smtpPassword || '' },
+      { key: 'smtp_from_email', value: createSMTPDto.smtpFromEmail },
+      { key: 'smtp_from_name', value: createSMTPDto.smtpFromName },
+      { key: 'smtp_enabled', value: createSMTPDto.smtpEnabled },
+    ];
+
+    for (const setting of smtpSettings) {
+      const existingSetting = await this.txHost.tx.findOne(Setting, {
+        where: { key: setting.key },
+      });
+
+      if (existingSetting) {
+        existingSetting.value = setting.value;
+        await this.txHost.tx.save(Setting, existingSetting);
+      } else {
+        const newSetting = this.txHost.tx.create(Setting, setting);
+        await this.txHost.tx.save(Setting, newSetting);
+      }
+    }
+
+    const result = await this.getSMTPSettingsFromManager();
+    const newSettings = { ...result } as Record<string, unknown>;
+
+    const trackedFields = [
+      'smtpHost',
+      'smtpPort',
+      'smtpSecure',
+      'smtpUsername',
+      'smtpPassword',
+      'smtpFromEmail',
+      'smtpFromName',
+      'smtpEnabled',
+    ];
+
+    const { oldValue, newValue } = diffAuditValues(
+      oldSettings,
+      newSettings,
+      trackedFields,
+    );
+
+    return { result, oldValue, newValue };
+  }
+
+  private async getSMTPSettingsFromManager(): Promise<SMTPResponseDto> {
     const smtpKeys = [
       'smtp_host',
       'smtp_port',
@@ -117,7 +134,7 @@ export class SettingService {
       'smtp_enabled',
     ];
 
-    const settings = await this.settingRepository.find({
+    const settings = await this.txHost.tx.find(Setting, {
       where: smtpKeys.map((key) => ({ key })),
     });
 

@@ -1635,7 +1635,9 @@ npm run start:dev
 
 ## 23. Quality Gates
 
-Two independent checkpoints enforce code health — one local (fast, staged-files-only), one in CI (full project, every PR).
+`forge quality check` is the primary quality gate. By default it checks the diff
+against `main`; use `--audit` for the full project and `--json` for CI-friendly
+structured output.
 
 ### Pre-commit (`.husky/pre-commit`) — runs on every commit
 
@@ -1647,17 +1649,17 @@ npm run knip      # Unused files, exports, and dependencies — full project (kn
 
 `knip.json` defines the project's entry points (`src/main.ts`, `src/data-source.ts`, migrations, tests) and scans `src/**/*.ts`, `cli/**/*.ts`, `test/**/*.ts` for anything unreachable from them.
 
-### CI (`.github/workflows/ci.yml`) — runs on every PR and push to `main`, in order
+### CI (`.github/workflows/ci.yml`) — runs on every PR and push to `main`
 
-1. `npm run lint:check` — ESLint, **no** `--fix`: a violation fails the build instead of silently patching it.
-2. `npm run typecheck` — `tsc --noEmit`: the whole project must compile with zero type errors.
-3. `npm test` — Jest unit tests when present.
-4. `npm run build` — the Nest build must succeed.
+Run `npm run quality:check`. The gate wraps the mechanical checks from
+`docs/review/ARCHITECTURE-COMPLIANCE.md`, including ESLint, typecheck, build,
+and baseline-filtered `knip`, plus project-specific architecture and database
+rules.
 
 ### Rules
 
 - Never bypass these with `--no-verify` or by disabling a script — fix the underlying issue instead.
-- Run `npm run typecheck` and `npm run build` locally before pushing; don't rely on CI to be the first place a compile error surfaces.
+- Run `npm run quality:check` locally before pushing; don't rely on CI to be the first place a compile error surfaces.
 - **Handling a knip false positive:** first check whether the file/export is genuinely dead — if so, delete it; don't suppress the finding. Only add an entry to `knip.json`'s ignore config when the symbol is a deliberately-kept public API surface knip can't infer (e.g. exported for an external consumer, referenced dynamically) — and leave a one-line comment at the ignore entry explaining why, so it doesn't read as stale later.
 
 These gates run alongside the module-boundary linting already described in §5 (Automated Enforcement) and the migration discipline in §9 — this section is about _what runs and when_, not a restatement of those rules.

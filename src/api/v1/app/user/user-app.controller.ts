@@ -59,11 +59,10 @@ export class UserAppController {
     @Body() updateUserProfileDto: UpdateUserProfileDto,
     @Req() request: Request,
   ) {
-    const user = await this.userService.update(
+    const user = await this.userService.updateOwnProfile(
       currentUser.id,
       updateUserProfileDto,
       file,
-      { id: currentUser.id, subjectType: 'USER' },
       request,
     );
     return this.toResponse(user);
