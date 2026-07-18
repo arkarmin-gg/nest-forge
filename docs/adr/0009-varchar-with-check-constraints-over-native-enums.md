@@ -4,6 +4,15 @@
 
 Accepted
 
+## Current implementation note
+
+The intended decision remains `varchar` + TypeScript enum + database `CHECK`
+constraint. Current entities use `varchar`, but the current baseline migration
+(`src/infrastructure/database/migrations/1784213162334-init.ts`) does not
+include all intended enum `CHECK` constraints. This is documented as drift in
+`docs/database-standards.md` and should be handled in a future
+schema-hardening migration, not as part of a documentation-only pass.
+
 ## Context
 
 The codebase already, consistently, avoids Postgres's native `enum` type for enum-like columns — it just never wrote the rule down. Every example follows the same three-layer shape:
@@ -14,11 +23,10 @@ The codebase already, consistently, avoids Postgres's native `enum` type for enu
    - `src/modules/user/entities/user.entity.ts:71` — `@Column({ type: 'varchar', nullable: true }) loginProvider?: LoginProvider;`
    - `src/modules/otp/entities/otp-record.entity.ts:36-40` — `@Column({ type: 'varchar', default: OtpStatus.PENDING }) status!: OtpStatus;` and `@Column({ type: 'varchar' }) purpose!: OtpPurpose;`
 
-The database enforces the allowed value set with a plain `CHECK` constraint added in the same migration, not a DB-native enum type:
+The intended database standard enforces the allowed value set with a plain `CHECK` constraint added in the same migration, not a DB-native enum type. The current baseline migration drift is noted above.
 
-- `src/infrastructure/database/migrations/1784000000000-CreateFoundationSchema.ts:94` — `ALTER TABLE "users" ADD CONSTRAINT "CK_users_login_provider" CHECK ("login_provider" IS NULL OR "login_provider" IN ('SMS', 'GOOGLE', 'APPLE'))`, on a `character varying` column (line 70).
-- Same file, `:138` — `CK_otp_records_status` — `CHECK ("status" IN ('PENDING', 'VERIFIED', 'EXPIRED', 'USED'))`.
-- Same file, `:141` — `CK_otp_records_purpose` — `CHECK ("purpose" IN ('RESET_PASSWORD'))`, both on `character varying` columns (line 120).
+- Example intended constraints: `CK_users_login_provider`,
+  `CK_otp_records_status`, and `CK_otp_records_purpose`.
 
 Because this was never written down, nothing stops a future entity from reaching for `@Column({ type: 'enum', enum: X })` instead — which would silently introduce a second, inconsistent pattern.
 

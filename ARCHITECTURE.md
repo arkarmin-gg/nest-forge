@@ -24,11 +24,12 @@
 15. [Transaction Management](#15-transaction-management)
 16. [Key Decorators Reference](#16-key-decorators-reference)
 17. [Environment Variables](#17-environment-variables)
-18. [Database Migrations & Seeding](#18-database-migrations--seeding)
-19. [Best Practices & Rules](#19-best-practices--rules)
-20. [Common Mistakes to Avoid](#20-common-mistakes-to-avoid)
-21. [Adding a New Module — Step-by-Step](#21-adding-a-new-module--step-by-step)
-22. [Quality Gates](#22-quality-gates)
+18. [Security Standards](#18-security-standards)
+19. [Database Migrations & Seeding](#19-database-migrations--seeding)
+20. [Best Practices & Rules](#20-best-practices--rules)
+21. [Common Mistakes to Avoid](#21-common-mistakes-to-avoid)
+22. [Adding a New Module — Step-by-Step](#22-adding-a-new-module--step-by-step)
+23. [Quality Gates](#23-quality-gates)
 
 ---
 
@@ -729,137 +730,24 @@ POST /auth/register/profile      → registrationStage = COMPLETED ✓
 
 ## 9. Database & Entity Standards
 
-### Base Entity — Extend This Always
+Detailed database and TypeORM rules live in
+[docs/database-standards.md](docs/database-standards.md). Treat that file as
+the canonical implementation checklist for entities, repositories, relations,
+transactions, migrations, and seeds.
 
-Every entity **must** extend `BaseEntity`. It is an **abstract** class (no `@Entity()` decorator — that belongs on the concrete entity), uses `timestamptz` columns, and indexes `deletedAt` so soft-delete filtering stays fast:
+Summary:
 
-```typescript
-// src/common/entities/base.entity.ts
-export abstract class BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+- Normal mutable domain records extend `SoftDeletableEntity`; lifecycle records
+  extend `BaseEntity`; raw entity shapes require a documented exception.
+- Modules own their repositories. Cross-module data access goes through the
+  owning module's exported service.
+- Schema changes go through migrations generated under
+  `src/infrastructure/database/migrations/`.
+- `npx forge db ...` is the sanctioned database command surface.
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt!: Date;
-
-  @Index()
-  @DeleteDateColumn({ type: 'timestamptz' })
-  deletedAt?: Date; // Soft delete — never physically delete rows
-}
-```
-
-For append-only tables that must **not** be soft-deletable (the log tables), extend `BaseEntity` instead (`src/common/entities/base.entity.ts`) — same `id`/`createdAt`/`updatedAt`, but no `deletedAt`.
-
-### Creating an Entity
-
-```typescript
-import { BaseEntity } from 'src/common/entities';
-
-@Entity('articles')
-export class Article extends BaseEntity {
-  @Column({ length: 255 })
-  name: string;
-
-  @Column({ type: 'text', nullable: true })
-  description: string | null;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
-
-  @Column({ default: true })
-  isActive: boolean;
-
-  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'created_by' })
-  createdBy: User | null;
-}
-```
-
-### Entity Rules
-
-| Rule                                                           | Reason                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------ |
-| Always extend `BaseEntity`                                     | UUID PK, timestamps, soft delete included              |
-| Use soft deletes only (`DeleteDateColumn`)                     | Data is auditable, recoverable                         |
-| Name tables explicitly with snake_case `@Entity('table_name')` | Avoids TypeORM naming surprises                        |
-| Use `nullable: true` explicitly when a column can be null      | TypeORM defaults vary                                  |
-| Exclude sensitive fields with `@Exclude()`                     | `ClassSerializerInterceptor` strips them automatically |
-
-```typescript
-import { Exclude } from 'class-transformer';
-
-@Column({ select: false })
-@Exclude()
-password: string;
-```
-
-### Unique Columns on Soft-Deletable Entities — Use Partial Unique Indexes
-
-Because soft delete leaves the row in place, a plain `@Column({ unique: true })` would keep a deleted record's value reserved forever — re-using it (e.g. re-registering a deleted user's phone) fails with `duplicate key value violates unique constraint`. Scope uniqueness to **active** rows with a partial unique index instead of an unconditional unique constraint (see ADR-0007):
-
-```typescript
-@Entity('users')
-@Index('UQ_users_phone_active', ['phone'], {
-  unique: true,
-  where: '"deletedAt" IS NULL',
-})
-export class User extends BaseEntity {
-  @Column() // NOT @Column({ unique: true })
-  phone!: string;
-}
-```
-
-This lets deleted rows hold stale values while active rows stay unique. The existence pre-checks in services already ignore soft-deleted rows (TypeORM's default), so a reused value creates a fresh record.
-
-### Enum-Like Columns — `varchar` + `CHECK`, Never Native `enum`
-
-**Never** declare an enum-like column as a native database enum (`@Column({ type: 'enum', enum: X })`). Always use `varchar`, typed in TypeScript by an `enum`/`const ... as const` object, backed by a migration `CHECK` constraint (see ADR-0009). A native DB enum makes adding/renaming a value an awkward `ALTER TYPE` migration and creates a second source of truth that can drift from the TS enum.
-
-```typescript
-// src/modules/otp/enums/otp-status.enum.ts — the source of truth
-export enum OtpStatus {
-  PENDING = 'PENDING',
-  VERIFIED = 'VERIFIED',
-  EXPIRED = 'EXPIRED',
-  USED = 'USED',
-}
-
-// DTO — validates against the same enum
-export class FilterOtpDto {
-  @IsOptional()
-  @IsEnum(OtpStatus)
-  status?: OtpStatus;
-}
-
-// entity — varchar, typed by the enum, NOT type: 'enum'
-@Column({ type: 'varchar', default: OtpStatus.PENDING })
-status!: OtpStatus;
-
-// migration — CHECK mirrors the enum's values exactly
-await queryRunner.query(
-  `ALTER TABLE "otp_records" ADD CONSTRAINT "CK_otp_records_status" CHECK ("status" IN ('PENDING', 'VERIFIED', 'EXPIRED', 'USED'))`,
-);
-```
-
-Size the `varchar` length to comfortably fit the longest current value — there is no fixed universal width. Adding or renaming a value means updating the TS enum **and** writing a migration that drops and re-adds the `CHECK` constraint with the new value list, in the same PR.
-
-### Migrations — Never Use `synchronize: true`
-
-`synchronize: true` is **disabled** in production. Always generate migrations:
-
-```bash
-# After changing an entity — provide the output path (TypeORM v0.3 syntax):
-npm run migration:generate src/infrastructure/database/migrations/AddArticleTable
-
-# Apply migrations:
-npm run migration:run
-
-# Revert last migration:
-npm run migration:revert
-```
+Key decisions: ADR-0007 covers partial unique indexes for soft delete,
+ADR-0008 covers transaction management, ADR-0009 covers enum-like columns, and
+ADR-0012 covers the `forge` CLI.
 
 ---
 
@@ -1033,7 +921,11 @@ async updateAdmin(id: string, dto: UpdateAdminDto, adminId: string, request: Req
 }
 ```
 
-`diffAuditValues` automatically strips any field named `password` — no manual redaction needed. `CreateActivityLogData` (activity logs) has no `oldValue`/`newValue` fields — diffs are an audit-log-only concept.
+`diffAuditValues` automatically redacts sensitive fields such as passwords,
+tokens, OTPs, API keys, provider secrets, authorization headers, cookies, and
+close variants — no manual redaction needed. `CreateActivityLogData` (activity
+logs) has no `oldValue`/`newValue` fields — diffs are an audit-log-only
+concept.
 
 ### Log Retention
 
@@ -1208,67 +1100,18 @@ export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
 
 ### Pagination, Filtering, and Sorting
 
-For the full list-endpoint convention — accepted query params, currently
-sortable resources, and the recipe for adding sortable fields — see
+List endpoint rules live in
 [docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md).
 ADR-0010 records the sorting decision (`SortableFilterDto` +
 `resolveSortField`).
 
-### Pagination DTO — Always Extend This
+Short version:
 
-```typescript
-import { PaginationFilterDto } from 'src/common/dto';
-
-export class FilterArticleDto extends PaginationFilterDto {
-  @IsOptional()
-  @IsEnum(ArticleCategory)
-  category?: ArticleCategory;
-
-  @IsOptional()
-  @IsString()
-  search?: string;
-}
-```
-
-`PaginationFilterDto` provides: `page` (default 1), `limit` (default 10), and `getAll` (default false — return all rows, bypassing pagination). Do not redefine these. Add resource-specific filters like `search` in the subclass.
-
-### Sortable Filter DTO — Use an Allowlist
-
-Resources that support client-controlled sorting extend `SortableFilterDto`
-instead of `PaginationFilterDto` directly:
-
-```typescript
-import { SortableFilterDto } from 'src/common/dto';
-
-export class FilterArticleDto extends SortableFilterDto {
-  @IsOptional()
-  @IsString()
-  search?: string;
-}
-```
-
-`sortBy` is a free-text query param, so never interpolate it directly into
-`.orderBy()`. Every sortable service declares a resource-specific allowlist
-and resolves the effective column with `resolveSortField`:
-
-```typescript
-import { resolveSortField } from 'src/common/utils';
-
-const VALID_SORT_FIELDS: (keyof Article)[] = ['createdAt'];
-
-const orderField = resolveSortField(
-  filter.sortBy,
-  VALID_SORT_FIELDS,
-  'createdAt',
-);
-
-qb.orderBy(`article.${orderField}`, filter.sortOrder ?? 'DESC');
-```
-
-Invalid `sortBy` values silently fall back to the resource default; they do
-not produce `400 Bad Request`. `sortOrder` remains strictly `'ASC' | 'DESC'`.
-Filtering fields such as `search`, `isBanned`, `startDate`, and `endDate` are
-resource-specific and live on the filter DTO.
+- Paginated list DTOs extend `PaginationFilterDto`.
+- Sortable list DTOs extend `SortableFilterDto`.
+- Services allowlist client-controlled sort fields before calling `.orderBy()`.
+- Resource-specific filters such as `search`, `isBanned`, `startDate`, and
+  `endDate` live on the resource filter DTO.
 
 ### Global String Trimming
 
@@ -1312,54 +1155,16 @@ No action needed — this is automatic.
 
 ## 15. Transaction Management
 
+See [docs/database-standards.md](docs/database-standards.md#transactions)
+for the canonical transaction checklist.
+
 Transactions are powered by [`@nestjs-cls/transactional`](https://papooch.github.io/nestjs-cls/plugins/available-plugins/transactional) with the TypeORM adapter (registered globally in `app.module.ts`). Use `@Transactional()` for operations that must succeed or fail together. Inside a transactional method, **all** database access must go through `this.txHost.tx` — the transaction-aware `EntityManager` from the injected `TransactionHost`. Outside a transaction, `txHost.tx` transparently falls back to the default manager, so the same code works in non-transactional methods too. Propagation is REQUIRED by default: a nested `@Transactional()` call reuses the active transaction rather than opening a new one.
 
-> Use `this.txHost.tx` for both reads and writes inside transactional services — do **not** mix in `@InjectRepository(...)` repositories, as those bypass the active transaction and won't see uncommitted rows.
-
-```typescript
-import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
-import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
-
-@Injectable()
-export class OrderService {
-  constructor(
-    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
-  ) {}
-
-  @Transactional()
-  async placeOrder(dto: PlaceOrderDto): Promise<Order> {
-    // All queries in this method run in a single DB transaction
-    const order = await this.txHost.tx.save(Order, { ...dto });
-    await this.inventoryService.deductStock(dto.articleId, dto.quantity);
-    await this.paymentService.charge(dto.paymentDetails);
-    // If any line throws, ALL changes are rolled back automatically
-    return order;
-  }
-}
-```
-
-**When to use `@Transactional()`:**
-
-- Creating multiple related records
-- Updating one record based on another
-- Any operation where partial failure would corrupt data
-
-**Running code only after commit:** the installed version of `@nestjs-cls/transactional` does not expose a commit-hook API (no `runOnTransactionCommit`/equivalent). If something must happen only once a transaction has actually committed — e.g. enqueuing an audit-log write, so a later rollback can't leave a log entry for a change that never persisted — split the method into a private `@Transactional()` core and a public, non-transactional wrapper that awaits the core and runs the post-commit logic afterward. The wrapper's `await` only resolves once the decorator's wrapped promise settles, which happens after commit (or after rollback, if it throws):
-
-```typescript
-async create(dto: CreateRoleDto, adminId: string, request: Request) {
-  const role = await this.createInTransaction(dto); // resolves only after commit
-  await this.logQueueService.enqueueAuditLog({ /* ... */ });
-  return role;
-}
-
-@Transactional()
-private async createInTransaction(dto: CreateRoleDto) {
-  /* ... */
-}
-```
-
-See §11 for the full pattern as used in `RoleService`.
+Use a transaction when partial success would corrupt domain state. If a side
+effect must happen only after commit, split the method into a private
+transactional core and a public wrapper that awaits it before enqueuing the
+side effect. See §11 for the log-specific version of that pattern and
+ADR-0008 for the decision record.
 
 ---
 
@@ -1470,261 +1275,97 @@ SMS_POH_API_SENDER_ID=...
 
 ---
 
-## 18. Database Migrations & Seeding
+## 18. Security Standards
 
-> **Note:** This template ships a single baseline migration, `CreateFoundationSchema`
-> (`src/infrastructure/database/migrations/1784000000000-CreateFoundationSchema.ts`), which creates
-> the full foundation schema in one pass — `synchronize` is `false`. It also carries the
-> constraints TypeORM does not emit from decorators alone, including polymorphic-owner `CHECK`
-> constraints (e.g. `CK_refresh_tokens_owner`, ensuring a `RefreshToken` belongs to exactly one of
-> `User`/`Admin`) and enum-backed `CHECK` constraints (e.g. `CK_users_login_provider`,
-> `CK_otp_records_status`, `CK_otp_records_purpose`). Run `forge db migrate run` to apply it, then
-> generate further migrations the normal way as entities evolve.
+Detailed security rules live in
+[docs/security-standards.md](docs/security-standards.md). Treat that file as
+the canonical implementation checklist for route authorization, sensitive data
+exposure, secrets/configuration, input safety, logging redaction, throttling,
+error disclosure, and operational security.
+
+The short version:
+
+- Routes are authenticated by default. `@Public()` is an explicit opt-out and
+  needs a narrow pre-auth reason.
+- Admin endpoints use permission guards; app endpoints use subject guards and
+  derive the target from `@CurrentUser()`.
+- Sensitive fields use both `select: false` and `@Exclude()`.
+- App-zone responses use whitelist DTOs with `@Expose()`.
+- Secrets never have production defaults and never appear in logs, responses,
+  audit diffs, migrations, or seed data.
+- Public auth/provider endpoints need stricter route-level throttles than the
+  global baseline.
+
+## 19. Database Migrations & Seeding
+
+See [docs/database-standards.md](docs/database-standards.md#migrations) for
+the canonical migration and seeding checklist.
+
+> **Note:** This template ships a single baseline migration,
+> `src/infrastructure/database/migrations/1784213162334-init.ts`, which creates
+> the current foundation schema in one pass — `synchronize` is `false`. Run
+> `npx forge db migrate run` to apply it, then generate further migrations as
+> entities evolve. Known schema-hardening drift, including missing enum and
+> ownership `CHECK` constraints, is documented in
+> [docs/database-standards.md#known-drift](docs/database-standards.md#known-drift).
 
 ### The `forge` CLI
 
 The project ships a purpose-built CLI at `cli/` that wraps **all** database
 operations under a single `forge db` command tree. It is the sole sanctioned
 way to touch the database — there is no parallel `npm run migration:*` or
-`npm run db:*` path, and no raw `npm run typeorm` escape hatch. It is
-registered as a local binary in `package.json`:
-
-```json
-"bin": { "forge": "./cli/index.ts" }
-```
-
-Run it with `npx forge`:
+`npm run db:*` path, and no raw `npm run typeorm` escape hatch.
 
 ```bash
 npx forge db --help
 ```
 
-**Why a dedicated CLI instead of raw `npm run` / TypeORM CLI scripts?**
-
-|                       | `forge` CLI                                               |
-| --------------------- | --------------------------------------------------------- |
-| Migration output path | Enforced to `src/infrastructure/database/migrations/`     |
-| Naming                | Just pass the name: `AddArticleTable`                     |
-| Discoverability       | `forge db --help` lists all sub-commands                  |
-| Prod safety           | `--prod` flag with a confirmation gate on destructive ops |
-
+Use the CLI to generate migrations, apply/revert/status migrations, seed,
+clear, and reset databases. Production database commands run against the
+compiled build, and destructive production commands require confirmation.
 See [ADR-0012](docs/adr/0012-forge-cli-as-primary-database-tool.md) for the
-full rationale.
-
-### `forge db` Command Tree
-
-```
-forge db
-├── migrate
-│   ├── generate <name>          Generate a migration into src/infrastructure/database/migrations/ (dev only)
-│   ├── run [--prod]             Apply all pending migrations
-│   ├── revert [--prod] [--yes]  Revert the last applied migration
-│   └── status [--prod]          Show applied and pending migrations
-├── seed [--prod]                 Run all seeders
-├── clear [--prod] [--yes]        Delete all data
-└── reset [--prod] [--yes]        clear + seed in sequence
-```
-
-Every command runs against `src/data-source.ts` via `ts-node` by default. Pass
-`--prod` to instead run against the compiled build
-(`dist/src/data-source.js`, executed with plain `node`/`typeorm` — no
-`ts-node`); `forge` errors immediately if `dist/` hasn't been built yet.
-`migrate generate` never accepts `--prod` — migrations are always generated
-from TypeScript source.
-
-`migrate revert --prod`, `clear --prod`, and `reset --prod` are destructive
-against a production database, so they print the resolved `DB_HOST`/`DB_NAME`
-and require typing `yes` to continue. Pass `-y`/`--yes` to skip the prompt
-(e.g. in CI).
-
-### Migration Commands
+rationale and [docs/database-standards.md](docs/database-standards.md) for the
+full command reference.
 
 ```bash
-# Generate a new migration — just provide the name, path is enforced automatically
 npx forge db migrate generate AddArticleTable
-# Creates: src/infrastructure/database/migrations/<timestamp>-AddArticleTable.ts
-
-# Apply all pending migrations
 npx forge db migrate run
-npx forge db migrate run --prod
-
-# Revert the last applied migration
-npx forge db migrate revert
-npx forge db migrate revert --prod   # prompts for confirmation
-
-# Show applied/pending migrations
-npx forge db migrate status
-npx forge db migrate status --prod
-```
-
-> **Tip:** Always review the generated migration file before running it. TypeORM infers the schema diff but can emit unexpected `DROP COLUMN` statements when column options change.
-
-### Seeding Commands
-
-```bash
-# Seed the database (creates roles, permissions, superadmin, settings)
 npx forge db seed
-
-# Clear all data
-npx forge db clear
-npx forge db clear --prod   # prompts for confirmation
-
-# Reset = clear + seed (sequential, exits on clear failure)
-npx forge db reset
-npx forge db reset --prod --yes   # non-interactive, e.g. CI
 ```
-
-**Seeding creates:**
-
-- Default roles: `superadmin`, `admin`, `editor`, `viewer`
-- All permissions for all modules
-- Superadmin account (credentials from env vars)
-- Default application settings
 
 ---
 
-## 19. Best Practices & Rules
+## 20. Best Practices & Rules
 
-### Architecture Rules (Non-Negotiable)
+This document owns the architectural shape of the system: the four zones,
+module boundaries, request lifecycle, module template, and quality gates. The
+detailed implementation checklists live in dedicated standards docs:
 
-1. **Never put business logic in a controller.** Controllers call services and return.
-2. **Never access another module's repository directly.** Use that module's exported service.
-3. **Use the right barrel — no deep imports.** Controllers import from `public-api.ts`. Domain services import services from `public-api.ts` and entities/events from `index.ts`. No symbol appears in both barrels. Own-module code uses relative direct imports.
-4. **Always extend `BaseEntity`.** No entity without UUID, timestamps, and soft delete.
-5. **Never use `synchronize: true`** in TypeORM config. Always write migrations.
-6. **Never store presigned URLs in the database.** Store the S3 key only.
-7. **Never send emails/SMS synchronously.** Always queue them via `NotificationService`.
-8. **Always validate environment variables.** Add new vars to the Joi schema in `env.validation.ts`.
-9. **Respect module boundaries — they're linted.** `no-restricted-imports` and `import-x/no-cycle` in `eslint.config.mjs` enforce barrel imports and reject circular dependencies. Barrels are side-effect-free named export manifests only. Run `npm run lint`.
-10. **Never use a native database `enum` type.** Use `varchar` + a TS `enum` + a migration `CHECK` constraint instead (see §9 and ADR-0009).
+- Database, TypeORM, relations, migrations, seeds, and transactions:
+  [docs/database-standards.md](docs/database-standards.md).
+- Route authorization, sensitive data, secrets, input safety, logging
+  redaction, and abuse controls:
+  [docs/security-standards.md](docs/security-standards.md).
+- Pagination, filtering, and sorting:
+  [docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md).
+- Review rules and mechanical checks:
+  [docs/review/ARCHITECTURE-COMPLIANCE.md](docs/review/ARCHITECTURE-COMPLIANCE.md).
 
-### Code Quality Rules
+The non-negotiable architectural habits remain:
 
-```typescript
-// ✅ Use readonly for injected dependencies
-constructor(private readonly userService: UserService) {}
-
-// ✅ Use explicit return types on service methods
-async findAll(filter: FilterUserDto): Promise<[User[], number]> { ... }
-
-// ✅ Use PartialType for update DTOs
-export class UpdateUserDto extends PartialType(CreateUserDto) {}
-
-// ✅ Use @Exclude() on sensitive entity fields
-@Column()
-@Exclude()
-password: string;
-
-// ✅ Always log with context
-private readonly logger = new Logger(UserService.name);
-
-// ❌ Never use console.log
-console.log('something happened');  // Use this.logger.log() instead
-
-// ❌ Never catch errors silently
-try {
-  await something();
-} catch (e) {
-  // silent catch — this hides bugs
-}
-```
-
-### Security Rules
-
-1. Hash passwords with bcryptjs — use `PasswordHashUtil`, never roll your own
-2. Never log passwords, tokens, or secrets
-3. Always validate and sanitize input — DTOs with class-validator handle this
-4. Use parameterized queries — TypeORM repository methods are safe by default
-5. Rate limiting is global — add stricter limits on auth endpoints with `@Throttle()`
-
-### Database & Query Performance
-
-**Avoid N+1 queries.** Never load a relation by calling a `findOne`/service lookup once per row in a loop — load it in the same query instead.
-
-```typescript
-// ❌ WRONG — one query per admin (N+1)
-const admins = await this.adminRepository.find();
-for (const admin of admins) {
-  admin.role = await this.roleRepository.findOne({
-    where: { id: admin.roleId },
-  });
-}
-
-// ✅ Simple lookup by id — use `relations`
-const admin = await this.adminRepository.findOne({
-  where: { id },
-  relations: ['role'],
-});
-
-// ✅ Filtered/paginated list, or multi-level relations — use the query builder
-const [admins, total] = await this.adminRepository
-  .createQueryBuilder('admin')
-  .leftJoinAndSelect('admin.role', 'role')
-  .skip(skip)
-  .take(limit)
-  .getManyAndCount();
-```
-
-Use `relations: [...]` for a simple lookup by id; use `createQueryBuilder` + `leftJoinAndSelect` once filtering, pagination, ordering, or multi-level relations are involved. Always paginate list endpoints via `PaginationFilterDto`/`SortableFilterDto` (`skip`/`take`, `getAll` opt-out — see §14 and [docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md)); don't hand-roll a second pagination shape.
-
-Never set `eager: true` on a relation — always load relations explicitly (`relations:`/`leftJoinAndSelect`) so each call site controls its own query cost instead of paying for a join it doesn't need.
-
-Every `@ManyToOne` sets `onDelete` explicitly — never leave it to the TypeORM default. Pick based on ownership:
-
-| Relationship                                            | `onDelete` |
-| ------------------------------------------------------- | ---------- |
-| Owned child record (e.g. `RefreshToken` → `User`)       | `CASCADE`  |
-| Optional/nullable reference (e.g. `AuditLog` → `Admin`) | `SET NULL` |
-| Protected reference data (e.g. `Admin` → `Role`)        | `RESTRICT` |
-
-### Request-Level Performance & Caching
-
-The app already wires up `CacheModule` globally (`app.module.ts`, Redis-backed, default TTL 600s). Use it for hot reads that don't need to be strictly real-time, following the existing convention (`src/modules/auth/services/registration-session.service.ts`):
-
-```typescript
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
-
-@Injectable()
-export class ArticleService {
-  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
-
-  private getKey(id: string): string {
-    return `article:${id}`;
-  }
-
-  async findById(id: string): Promise<Article> {
-    const cached = await this.cacheManager.get<Article>(this.getKey(id));
-    if (cached) return cached;
-
-    const article = await this.articleRepository.findOneOrFail({
-      where: { id },
-    });
-    await this.cacheManager.set(this.getKey(id), article, 300 * 1000); // explicit TTL, don't rely on the global default when it doesn't fit
-    return article;
-  }
-
-  async update(id: string, dto: UpdateArticleDto): Promise<Article> {
-    const article = await this.articleRepository.save({ id, ...dto });
-    await this.cacheManager.del(this.getKey(id)); // invalidate in the same method that writes
-    return article;
-  }
-}
-```
-
-**Rule:** any service that caches a read must invalidate (`cacheManager.del`) the corresponding key(s) in every method that writes/updates/deletes that same data. Cache and database must never be allowed to silently diverge.
-
-Never perform blocking or CPU-heavy work synchronously in the request path — if it isn't needed for the immediate response, queue it (see §13's BullMQ pattern) rather than making the caller wait.
-
-### General Backend Hygiene
-
-- **Idempotency:** for mutation endpoints a client may retry (e.g. after a timeout), rely on the existing partial-unique-index + `23505` → `409 Conflict` mapping (§9, ADR-0007) as the safety net rather than building bespoke idempotency-key infrastructure.
-- **Defensive timeouts on outbound calls:** third-party calls (S3, SMS, OAuth) should set their own client-level timeout rather than relying solely on the global 10s controller timeout (`@RequestTimeout`, §16) — a slow outbound call should fail fast, not just cut off the HTTP response.
-- **N+1 across module boundaries too:** if a loop calls another module's service method once per item, check whether that service should expose a batch method instead of accepting the per-item round trips.
+1. Controllers are thin and contain no business logic.
+2. Domain modules own their entities and repositories.
+3. Cross-module access goes through exported services, not foreign
+   repositories.
+4. Controllers and services use the correct module barrels.
+5. Database changes go through migrations and the `forge` CLI.
+6. Security controls are designed into the endpoint, not patched on at the end.
+7. Async side effects use the queue/event patterns documented in this file.
+8. Mechanical checks run before a change is considered ready.
 
 ---
 
-## 20. Common Mistakes to Avoid
+## 21. Common Mistakes to Avoid
 
 | Mistake                                                                  | Correct Approach                                                                                                        |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
@@ -1745,12 +1386,12 @@ Never perform blocking or CPU-heavy work synchronously in the request path — i
 | Using `console.log` for debugging                                        | Use `Logger` from `@nestjs/common`                                                                                      |
 | Forgetting `@Exclude()` on password fields                               | Always add `@Exclude()` to sensitive columns                                                                            |
 | Writing business logic in a controller                                   | Move all logic to the service                                                                                           |
-| Creating entities without extending `BaseEntity`                         | Always extend `BaseEntity`                                                                                              |
+| Creating normal mutable entities without `SoftDeletableEntity`           | Use `SoftDeletableEntity`; reserve `BaseEntity`/raw entities for documented lifecycle, log, or join-table exceptions    |
 | Creating a circular import between modules                               | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/`         |
 
 ---
 
-## 21. Adding a New Module — Step-by-Step
+## 22. Adding a New Module — Step-by-Step
 
 Follow this checklist when creating a new domain module (example: `article`).
 
@@ -1767,16 +1408,16 @@ touch src/modules/article/public-api.ts
 
 ```typescript
 // src/modules/article/entities/article.entity.ts
-import { Entity, Column } from 'typeorm';
-import { BaseEntity } from 'src/common/entities';
+import { SoftDeletableEntity } from 'src/common/entities';
+import { Column, Entity } from 'typeorm';
 
 @Entity('articles')
-export class Article extends BaseEntity {
+export class Article extends SoftDeletableEntity {
   @Column({ length: 255 })
-  name: string;
+  name!: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
+  price!: number;
 }
 ```
 
@@ -1978,13 +1619,9 @@ Pick the API-module pattern when a zone has multiple controllers or needs audien
 ### Step 9 — Generate and Run the Migration
 
 ```bash
-# Using the forge CLI (recommended — path is enforced automatically):
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate CreateArticlesTable
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
-
-# Or via npm run aliases:
-npm run migration:generate src/infrastructure/database/migrations/CreateArticlesTable
-npm run migration:run
+# Using the forge CLI — path is enforced automatically:
+npx forge db migrate generate CreateArticlesTable
+npx forge db migrate run
 ```
 
 ### Step 10 — Verify
@@ -1996,7 +1633,7 @@ npm run start:dev
 
 ---
 
-## 22. Quality Gates
+## 23. Quality Gates
 
 Two independent checkpoints enforce code health — one local (fast, staged-files-only), one in CI (full project, every PR).
 
@@ -2030,7 +1667,7 @@ These gates run alongside the module-boundary linting already described in §5 (
 ## Quick Reference Card
 
 ```
-Adding a module?        Follow the 10-step checklist in Section 21.
+Adding a module?        Follow the 10-step checklist in Section 22.
 New endpoint?           Controller calls service. Zero logic in controller.
 Writing a controller?   Import services/DTOs/decorators from public-api.ts only.
 Need another service?   Import it from public-api.ts — services live there, not index.ts.

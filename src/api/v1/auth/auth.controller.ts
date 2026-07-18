@@ -86,6 +86,7 @@ export class AuthController {
   @Public()
   @Post('user/login/oauth')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @RequestTimeout(30_000)
   async userOauthLogin(
     @Body() dto: OAuthLoginPayload,
@@ -105,6 +106,7 @@ export class AuthController {
   @Public()
   @Post('register/otp/verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   async userRegisterOTPVerify(@Body() dto: UserRegisterOTPVerifyDto) {
     return this.userAuthService.userRegisterOTPVerify(dto);
   }
@@ -112,6 +114,7 @@ export class AuthController {
   @Public()
   @Post('register/password')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   async userRegisterPasswordSetup(
     @Body() dto: UserRegisterPasswordSetupDto,
     @Req() request: Request,
@@ -122,6 +125,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async refresh(@Body() dto: RefreshTokenDto) {
     return this.tokenService.refreshAccessToken(dto.refreshToken);
   }
@@ -188,6 +192,7 @@ export class AuthController {
   @Public()
   @Post('admin/forgot-password/verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   async passwordResetOTPVerify(@Body() dto: VerifyPasswordResetOTPCodeDto) {
     return this.passwordResetService.verifyPasswordResetOTPCode(dto);
   }
@@ -195,6 +200,7 @@ export class AuthController {
   @Public()
   @Post('admin/reset-password')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() request: Request) {
     await this.passwordResetService.resetPassword(dto, request);
   }
@@ -213,6 +219,7 @@ export class AuthController {
   @Public()
   @Post('user/forgot-password/verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   async userPasswordResetOTPVerify(@Body() dto: VerifyPasswordResetOTPCodeDto) {
     return this.passwordResetService.userVerifyPasswordResetOTPCode(dto);
   }
@@ -220,6 +227,7 @@ export class AuthController {
   @Public()
   @Post('user/reset-password')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   async userResetPassword(
     @Body() dto: ResetPasswordDto,
     @Req() request: Request,

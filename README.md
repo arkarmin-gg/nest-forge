@@ -48,8 +48,10 @@ src/
 └── main.ts
 ```
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTEXT.md](CONTEXT.md), and
-[docs/adr](docs/adr) before adding modules.
+Use the [documentation map](docs/README.md) to find the canonical owner for
+architecture, database, security, review, and agent-workflow standards. Before
+adding modules, start with [ARCHITECTURE.md](ARCHITECTURE.md) and the linked
+standards docs.
 
 ## Requirements
 
@@ -127,7 +129,8 @@ Every `run`/`revert`/`status`/`seed`/`clear`/`reset` subcommand accepts `--prod`
 to run against the compiled build (`dist/src/data-source.js`), and destructive
 prod operations (`clear`, `reset`, `migrate revert --prod`) require typing
 "yes" to confirm (or pass `-y`/`--yes` for CI). See
-[ARCHITECTURE.md §18](ARCHITECTURE.md) for the full command reference.
+[docs/database-standards.md](docs/database-standards.md) for the canonical
+database command reference.
 
 ## Template Notes
 
@@ -136,5 +139,6 @@ single foundation baseline and is not intended to migrate an older application
 database forward.
 
 When adding a domain module, follow the module template and import rules in
-[ARCHITECTURE.md](ARCHITECTURE.md). For reviews, use
+[ARCHITECTURE.md](ARCHITECTURE.md). For docs ownership, use the
+[documentation map](docs/README.md). For reviews, use
 [docs/review/ARCHITECTURE-COMPLIANCE.md](docs/review/ARCHITECTURE-COMPLIANCE.md).
