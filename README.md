@@ -106,12 +106,12 @@ npm run build           # compile
 npm run lint            # eslint with --fix
 npm run lint:check      # eslint without mutation
 npm run typecheck       # tsc --noEmit
-npm test                # unit tests
+npm test                # unit tests, when present
 npm run test:e2e        # e2e tests
 ```
 
 Before pushing, run the quality-gate checks: `npm run lint:check`,
-`npm run typecheck`, `npm run build`, and the relevant tests.
+`npm run typecheck`, `npm run build`, and existing relevant tests when present.
 
 ## Database & Migrations
 

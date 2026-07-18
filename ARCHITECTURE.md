@@ -1651,7 +1651,7 @@ npm run knip      # Unused files, exports, and dependencies — full project (kn
 
 1. `npm run lint:check` — ESLint, **no** `--fix`: a violation fails the build instead of silently patching it.
 2. `npm run typecheck` — `tsc --noEmit`: the whole project must compile with zero type errors.
-3. `npm test` — Jest unit tests.
+3. `npm test` — Jest unit tests when present.
 4. `npm run build` — the Nest build must succeed.
 
 ### Rules

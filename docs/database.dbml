@@ -26,6 +26,12 @@ Enum login_provider {
   APPLE
 }
 
+Enum user_device_platform {
+  IOS
+  ANDROID
+  WEB
+}
+
 Enum log_action {
   LOGIN
   LOGOUT
@@ -207,6 +213,28 @@ Table users {
   }
 }
 
+Table user_devices {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  user_id uuid [not null]
+  device_id varchar(128) [not null]
+  fcm_token text [note: "Firebase Cloud Messaging registration token; excluded from default selects."]
+  platform varchar [not null, note: "Application enum: user_device_platform."]
+  app_version varchar(100)
+  device_model varchar(255)
+  os_version varchar(100)
+  last_seen_at timestamptz [not null]
+
+  indexes {
+    deleted_at [name: "IDX_e6a4e256204bd50b0053bf63bb"]
+    user_id [name: "IDX_28bd79e1b3f7c1168f0904ce24"]
+    (user_id, last_seen_at) [name: "IDX_user_devices_user_last_seen"]
+    (user_id, device_id) [unique, name: "UQ_user_devices_user_device_active", note: "Partial unique index: WHERE deleted_at IS NULL."]
+  }
+}
+
 Table settings {
   id uuid [pk, not null, default: `gen_random_uuid()`]
   created_at timestamptz [not null, default: `now()`]
@@ -275,6 +303,7 @@ Ref: role_permissions.role_id > roles.id [delete: cascade, update: no action]
 Ref: role_permissions.permission_id > permissions.id [delete: cascade, update: no action]
 Ref: admins.role_id > roles.id [delete: restrict, update: no action]
 Ref: refresh_tokens.user_id > users.id [delete: cascade, update: no action]
+Ref: user_devices.user_id > users.id [delete: cascade, update: no action]
 Ref: refresh_tokens.admin_id > admins.id [delete: cascade, update: no action]
 Ref: otp_records.user_id > users.id [delete: cascade, update: no action]
 Ref: otp_records.admin_id > admins.id [delete: cascade, update: no action]

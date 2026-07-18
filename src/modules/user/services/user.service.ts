@@ -184,7 +184,7 @@ export class UserService {
       }
 
       // PartialType uses runtime reflection — cast once to access inherited properties
-      const dto = updateUserDto as Partial<CreateUserDto>;
+      const dto = updateUserDto;
 
       if (dto.phone && dto.phone !== existingUser.phone) {
         const duplicatePhoneUser = await this.userRepository.findOne({

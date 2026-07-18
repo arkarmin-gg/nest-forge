@@ -12,6 +12,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { LoginProvider } from '../enums/login-provider.enum';
+import { UserDevice } from './user-device.entity';
 
 @Entity('users')
 @Index('UQ_users_phone_active', ['phone'], {
@@ -60,6 +61,9 @@ export class User extends SoftDeletableEntity {
 
   @OneToMany(() => OtpRecord, (record) => record.user)
   otpRecords?: OtpRecord[];
+
+  @OneToMany(() => UserDevice, (device) => device.user)
+  devices?: UserDevice[];
 
   @Column({ type: 'varchar', nullable: true })
   googleId?: string;

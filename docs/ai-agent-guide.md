@@ -58,9 +58,9 @@ Use this loop for every task:
    - implementation files inside a module use relative imports, not their own
      root barrels.
 5. Implement the smallest coherent change.
-6. Add or update tests for behavior that could regress.
-7. Run the verification commands that match the risk.
-8. Re-read the diff as a reviewer before finalizing.
+6. Run the verification commands that match the risk, including existing
+   relevant tests when they are already present.
+7. Re-read the diff as a reviewer before finalizing.
 
 ## Zone Decisions
 
@@ -261,10 +261,11 @@ For code changes, run the smallest useful set first, then broaden based on
 risk:
 
 ```bash
+npm run format
+npm run knip
 npm run lint:check
 npm run typecheck
 npm run build
-npm test
 ```
 
 For architecture or security-sensitive changes, also use the mechanical command
