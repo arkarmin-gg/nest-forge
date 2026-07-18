@@ -1,6 +1,9 @@
+/** @lintignore Public route decorator; exported for ownership-guarded controllers. */
+export { CheckOwnership } from './decorators/check-ownership.decorator';
 export { CurrentUser } from './decorators/current-user.decorator';
 export { Public } from './decorators/public.decorator';
 export { RequireSubject } from './decorators/require-subject.decorator';
+export { SubjectType } from './enums/subject-type.enum';
 export { AdminLoginDto } from './dto/admin-login.dto';
 export { ChangePasswordDto } from './dto/change-password.dto';
 export { ForgotPasswordSendOTPDto } from './dto/forgot-password-send-otp.dto';

@@ -5,12 +5,13 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  PERMISSIONS_KEY,
-  PermissionRequirement,
-} from '../decorators/permissions.decorator';
-import { ActionType } from '../constants/action-type.enum';
-import type { AuthenticatedUser, RequestWithUser } from 'src/modules/auth/api';
+import { PERMISSIONS_KEY } from '../constants/permissions-key.constant';
+import { PermissionRequirement } from '../interfaces/permission-requirement.interface';
+import { ActionType } from '../enums/action-type.enum';
+import type {
+  AuthenticatedUser,
+  RequestWithUser,
+} from 'src/modules/auth/public-api';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {

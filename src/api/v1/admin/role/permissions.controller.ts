@@ -4,7 +4,7 @@ import {
   PermissionsGuard,
   RequirePermissions,
   RoleService,
-} from 'src/modules/role/api';
+} from 'src/modules/role/public-api';
 
 @Controller({ path: 'admin/permissions', version: '1' })
 @UseGuards(PermissionsGuard)

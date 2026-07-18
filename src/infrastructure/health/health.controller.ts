@@ -10,7 +10,7 @@ import {
 } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Public } from 'src/modules/auth/api';
+import { Public } from 'src/modules/auth/public-api';
 import { DataSource } from 'typeorm';
 import { BullMqHealthIndicator } from './indicators/bullmq.health';
 
@@ -42,7 +42,7 @@ export class HealthController {
     return {
       ...result,
       version,
-      appName: this.configService.get<string>('APP_NAME'),
+      appName: this.configService.getOrThrow<string>('app.name'),
     };
   }
 }

@@ -1,11 +1,6 @@
 import { Request } from 'express';
 import { UAParser } from 'ua-parser-js';
-
-export interface ParsedUserAgent {
-  device: string;
-  browser: string;
-  os: string;
-}
+import { ParsedUserAgent } from '../interfaces/parsed-user-agent.interface';
 
 export function parseUserAgent(request: Request): ParsedUserAgent {
   if (!request) {

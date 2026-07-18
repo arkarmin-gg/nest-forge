@@ -3,11 +3,13 @@ import {
   Controller,
   Get,
   Patch,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
 import { plainToInstance } from 'class-transformer';
 import { ResolvePresignedUrls } from 'src/common/decorators';
 import { imageInterceptorOptions } from 'src/common/config';
@@ -16,18 +18,18 @@ import {
   CurrentUser,
   RequireSubject,
   SubjectGuard,
-} from 'src/modules/auth/api';
-import { LogAction, LogActivity } from 'src/modules/log/api';
+  SubjectType,
+} from 'src/modules/auth/public-api';
 import {
   UpdateUserProfileDto,
   UserAppResponseDto,
   UserService,
-} from 'src/modules/user/api';
+} from 'src/modules/user/public-api';
 
 /**
  * App zone (USER subject) self-service endpoints.
  *
- * Access is restricted to USER subjects via SubjectGuard + @RequireSubject('USER'),
+ * Access is restricted to USER subjects via SubjectGuard + @RequireSubject(SubjectType.USER),
  * and the target is always the authenticated user (@CurrentUser) — there is no
  * :id path param, so a user can only ever read/update their own record.
  *
@@ -36,7 +38,7 @@ import {
  */
 @Controller({ path: 'app/me', version: '1' })
 @UseGuards(SubjectGuard)
-@RequireSubject('USER')
+@RequireSubject(SubjectType.USER)
 export class UserAppController {
   constructor(private readonly userService: UserService) {}
 
@@ -49,22 +51,20 @@ export class UserAppController {
   }
 
   @Patch()
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'User updated their own profile',
-    resourceType: 'User',
-  })
   @ResolvePresignedUrls({ path: 'profileImageKey', as: 'profileImageUrl' })
   @UseInterceptors(FileInterceptor('profileImage', imageInterceptorOptions))
   async updateProfile(
     @CurrentUser() currentUser: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,
     @Body() updateUserProfileDto: UpdateUserProfileDto,
+    @Req() request: Request,
   ) {
     const user = await this.userService.update(
       currentUser.id,
       updateUserProfileDto,
       file,
+      { id: currentUser.id, subjectType: 'USER' },
+      request,
     );
     return this.toResponse(user);
   }

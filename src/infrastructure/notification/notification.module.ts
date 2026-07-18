@@ -15,10 +15,10 @@ import { EmailProcessor } from './processors/email.processor';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         connection: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
+          host: configService.getOrThrow<string>('redis.host'),
+          port: configService.getOrThrow<number>('redis.port'),
         },
-        prefix: configService.get<string>('REDIS_PREFIX_KEY', 'nest-forge'),
+        prefix: configService.getOrThrow<string>('redis.prefixKey'),
       }),
       inject: [ConfigService],
     }),

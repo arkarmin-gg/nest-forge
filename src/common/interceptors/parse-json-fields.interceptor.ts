@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 
+/** @lintignore Public interceptor factory exported from the common interceptors barrel. */
 export function ParseJsonFields(...fields: string[]): Type<NestInterceptor> {
   @Injectable()
   class ParseJsonFieldsInterceptor implements NestInterceptor {

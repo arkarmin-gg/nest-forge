@@ -12,18 +12,16 @@ import * as crypto from 'crypto';
 import { Request } from 'express';
 import { getMockOtpCode, isOtpMockEnabled } from 'src/common/utils';
 import { SMSPohService } from 'src/common/services';
-import { AdminService } from 'src/modules/admin/api';
+import { AdminService } from 'src/modules/admin/public-api';
 import { OtpPurpose } from 'src/modules/otp';
-import { OtpService } from 'src/modules/otp/api';
-import { UserService } from 'src/modules/user/api';
+import { OtpService } from 'src/modules/otp/public-api';
+import { UserService } from 'src/modules/user/public-api';
 import { ForgotPasswordSendOTPDto } from '../dto/forgot-password-send-otp.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { UserForgotPasswordSendOTPDto } from '../dto/user-forgot-password-send-otp.dto';
 import { VerifyPasswordResetOTPCodeDto } from '../dto/verify-password-reset-otp-code.dto';
-import {
-  FORGOT_PASSWORD_CODE_REQUESTED,
-  ForgotPasswordCodeRequestedEvent,
-} from '../events/forgot-password-code-requested.event';
+import { ForgotPasswordCodeRequestedEvent } from '../events/forgot-password-code-requested.event';
+import { FORGOT_PASSWORD_CODE_REQUESTED } from '../constants/forgot-password-code-requested-event.constant';
 import { TokenService } from './token.service';
 
 @Injectable()
@@ -73,7 +71,7 @@ export class PasswordResetService {
         admin.email,
         code,
         admin.fullName,
-        this.configService.get<string>('SMTP_FROM_NAME', ''),
+        this.configService.getOrThrow<string>('seed.smtp.fromName'),
         10,
       ),
     );

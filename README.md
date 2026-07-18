@@ -48,8 +48,10 @@ src/
 └── main.ts
 ```
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTEXT.md](CONTEXT.md), and
-[docs/adr](docs/adr) before adding modules.
+Use the [documentation map](docs/README.md) to find the canonical owner for
+architecture, database, security, review, and agent-workflow standards. Before
+adding modules, start with [ARCHITECTURE.md](ARCHITECTURE.md) and the linked
+standards docs.
 
 ## Requirements
 
@@ -63,8 +65,8 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [CONTEXT.md](CONTEXT.md), and
 ```bash
 npm install
 cp .env.example .env
-npm run migration:run
-npm run db:seed
+npx forge db migrate run
+npx forge db seed
 npm run start:dev
 ```
 
@@ -80,16 +82,19 @@ Required values:
 
 - `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
 - `JWT_SECRET`, `JWT_REFRESH_SECRET`
+- `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD`
+- `SEED_SMTP_FROM_NAME`, `SEED_SMTP_USERNAME`
 
 Optional foundation integrations:
 
-- Redis (also backs BullMQ queues): `REDIS_HOST`, `REDIS_PORT`
-- S3-compatible storage: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_ENDPOINT`, `AWS_REGION`, `AWS_BUCKET_NAME`
-- SMTP seed defaults: `SMTP_FROM_NAME`, `SMTP_USERNAME`,
-  `SMTP_USER_PASSWORD`
+- Redis (also backs BullMQ queues): `REDIS_HOST`, `REDIS_PORT`,
+  `REDIS_PREFIX_KEY`
+- S3-compatible storage: `S3_ENABLED`, `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT`, `AWS_REGION`, `AWS_BUCKET_NAME`
+- SMTP seed password: `SEED_SMTP_PASSWORD`
 - SMS provider: `SMS_POH_API_KEY`, `SMS_POH_API_SECRET_KEY`,
-  `SMS_POH_BASE_API_URL`, `SMS_POH_API_BRAND`, `SMS_POH_API_SENDER_ID`
+  `SMS_POH_BASE_API_URL`, `SMS_POH_API_BRAND`, `SMS_POH_API_SENDER_ID`,
+  `SMS_POH_ENABLED`
 - Local OTP/SMS mocks: `OTP_MOCK_ENABLED`, `OTP_MOCK_CODE`,
   `SMS_MOCK_ENABLED`
 
@@ -103,10 +108,29 @@ npm run lint:check      # eslint without mutation
 npm run typecheck       # tsc --noEmit
 npm test                # unit tests
 npm run test:e2e        # e2e tests
-npm run migration:run   # run migrations
-npm run db:seed         # seed roles, admin, user, settings
-npm run db:clear        # truncate local database tables
 ```
+
+Before pushing, run the quality-gate checks: `npm run lint:check`,
+`npm run typecheck`, `npm run build`, and the relevant tests.
+
+## Database & Migrations
+
+All database and migration operations go through the `forge` CLI — there is no
+parallel `npm run migration:*` path.
+
+```bash
+npx forge db migrate generate AddArticleTable   # generate a migration
+npx forge db migrate run                        # apply pending migrations
+npx forge db seed                                # seed roles, admin, user, settings
+npx forge db clear                               # truncate local database tables
+```
+
+Every `run`/`revert`/`status`/`seed`/`clear`/`reset` subcommand accepts `--prod`
+to run against the compiled build (`dist/src/data-source.js`), and destructive
+prod operations (`clear`, `reset`, `migrate revert --prod`) require typing
+"yes" to confirm (or pass `-y`/`--yes` for CI). See
+[docs/database-standards.md](docs/database-standards.md) for the canonical
+database command reference.
 
 ## Template Notes
 
@@ -115,5 +139,6 @@ single foundation baseline and is not intended to migrate an older application
 database forward.
 
 When adding a domain module, follow the module template and import rules in
-[ARCHITECTURE.md](ARCHITECTURE.md). For reviews, use
+[ARCHITECTURE.md](ARCHITECTURE.md). For docs ownership, use the
+[documentation map](docs/README.md). For reviews, use
 [docs/review/ARCHITECTURE-COMPLIANCE.md](docs/review/ARCHITECTURE-COMPLIANCE.md).

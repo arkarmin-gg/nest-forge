@@ -24,11 +24,12 @@
 15. [Transaction Management](#15-transaction-management)
 16. [Key Decorators Reference](#16-key-decorators-reference)
 17. [Environment Variables](#17-environment-variables)
-18. [Database Migrations & Seeding](#18-database-migrations--seeding)
-19. [Best Practices & Rules](#19-best-practices--rules)
-20. [Common Mistakes to Avoid](#20-common-mistakes-to-avoid)
-21. [Adding a New Module — Step-by-Step](#21-adding-a-new-module--step-by-step)
-22. [Quality Gates](#22-quality-gates)
+18. [Security Standards](#18-security-standards)
+19. [Database Migrations & Seeding](#19-database-migrations--seeding)
+20. [Best Practices & Rules](#20-best-practices--rules)
+21. [Common Mistakes to Avoid](#21-common-mistakes-to-avoid)
+22. [Adding a New Module — Step-by-Step](#22-adding-a-new-module--step-by-step)
+23. [Quality Gates](#23-quality-gates)
 
 ---
 
@@ -112,9 +113,11 @@ nest-forge/
 │   │
 │   ├── modules/                     ← Domain Layer (Business Logic)
 │   │   ├── auth/                    # Auth, RBAC, JWT, guards, strategies
+│   │   │   ├── constants/           # Reflector metadata keys, event names (one per file)
 │   │   │   ├── decorators/
 │   │   │   ├── dto/
 │   │   │   ├── entities/
+│   │   │   ├── enums/               # SubjectType, ...
 │   │   │   ├── events/
 │   │   │   ├── guards/
 │   │   │   ├── interfaces/
@@ -122,7 +125,7 @@ nest-forge/
 │   │   │   ├── services/
 │   │   │   ├── strategies/
 │   │   │   ├── auth.module.ts
-│   │   │   └── index.ts             # Public API barrel — always import from here
+│   │   │   └── index.ts             # Domain public barrel — module wiring/types
 │   │   ├── user/
 │   │   │   ├── dto/
 │   │   │   ├── entities/
@@ -144,7 +147,7 @@ nest-forge/
 │   ├── common/                      ← Shared Cross-Cutting Concerns
 │   │   ├── config/                  # Env validation, logger config, upload (Multer) config
 │   │   ├── decorators/              # @RequestTimeout, @ResolvePresignedUrls
-│   │   ├── dto/                     # PaginationFilterDto
+│   │   ├── dto/                     # PaginationFilterDto, SortableFilterDto
 │   │   ├── entities/                # BaseEntity, SoftDeletableEntity
 │   │   ├── filters/                 # Exception filters
 │   │   ├── interceptors/            # Response, Timeout, PresignedUrl
@@ -192,9 +195,12 @@ Understanding these four zones is **mandatory** before writing any code.
 ```typescript
 // ✅ CORRECT — thin controller
 @Post()
-@LogActivity({ action: LogAction.CREATE, description: 'Admin created' })
-async create(@Body() dto: CreateAdminDto) {
-  return this.adminService.create(dto);
+async create(
+  @Body() dto: CreateAdminDto,
+  @CurrentUser() admin: AuthenticatedUser,
+  @Req() request: Request,
+) {
+  return this.adminService.create(dto, admin.id, request);
 }
 
 // ❌ WRONG — business logic in controller
@@ -221,7 +227,7 @@ src/api/v1/
 **Rules for placing a new controller:**
 
 - A back-office endpoint goes under `api/v1/admin/<resource>/`, route prefix `admin/...`, gated by `PermissionsGuard` + `@RequirePermissions`. It may return raw entities (passive serialization).
-- An end-user endpoint goes under `api/v1/app/<resource>/`, route prefix `app/...`, gated by `SubjectGuard` + `@RequireSubject('USER')`. It **must** map to a whitelist response DTO (see §7) and derive the target from `@CurrentUser()` — never a `:id` path param.
+- An end-user endpoint goes under `api/v1/app/<resource>/`, route prefix `app/...`, gated by `SubjectGuard` + `@RequireSubject(SubjectType.USER)`. It **must** map to a whitelist response DTO (see §7) and derive the target from `@CurrentUser()` — never a `:id` path param.
 - Domain services in `modules/` stay audience-agnostic and are reused by both zones; the audience-specific shaping lives in the controller.
 
 Reference example: `src/api/v1/app/user/user-app.controller.ts` (`GET`/`PATCH /api/v1/app/me`).
@@ -236,16 +242,45 @@ Each module contains:
 - `dto/` — Data Transfer Objects for input validation
 - `services/` — Business logic
 - `events/` — Domain events for cross-module communication
+- `enums/` — TS enums, one per file (see below)
+- `interfaces/` — Exported, reusable domain interfaces, one per file (see below)
+- `constants/` — Exported primitive constants — Reflector metadata keys, event-name strings, config values — one per file (see below)
 - `index.ts` — Module wiring and domain types (module class, entities, events)
-- `api.ts` — Services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
+- `public-api.ts` — Callable public application surface: services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
 
 **Rules:**
 
 - A module **only accesses its own entities**
 - To use another module's data, call that module's **exported service**
-- Always expose both `index.ts` and `api.ts` barrels — no symbol appears in both
-- Controllers always import from `api.ts` — services, DTOs, and route decorators live there
-- Domain services import services from `api.ts`; entities and events from `index.ts`
+- Always expose both `index.ts` and `public-api.ts` barrels — no symbol appears in both
+- Controllers always import from `public-api.ts` — services, DTOs, and route decorators live there
+- Domain services import services from `public-api.ts`; entities and events from `index.ts`
+- Barrels are architectural boundary contracts only, never convenience aggregators
+
+#### `enums/`, `interfaces/`, `constants/` — One Concern Per Folder
+
+A module keeps its enums, its reusable interfaces, and its primitive constants in three separate folders — never mixed into a single catch-all `constants/` (see ADR-0011). Each folder holds one symbol per file, named after the symbol:
+
+```
+modules/log/
+├── enums/
+│   ├── log-action.enum.ts
+│   ├── log-status.enum.ts
+│   └── log-job-name.enum.ts
+├── interfaces/
+│   ├── create-activity-log.interface.ts
+│   └── create-audit-log.interface.ts
+└── constants/
+    └── log-queue.constants.ts
+```
+
+**What goes where:**
+
+- `enums/*.enum.ts` — TS `enum` declarations, including the varchar-backed enums from §9 (e.g. `OtpStatus`, `LogAction`). Also the natural home for a decorator's parameter type when that parameter is a fixed set of string values (e.g. `SubjectType` for `@RequireSubject()`) — prefer an enum over a union type alias so it's importable, validated with `@IsEnum()`, and discoverable in one place.
+- `interfaces/*.interface.ts` — **exported** interfaces meant to be imported elsewhere (a guard, a DTO, another service). A file-private, non-exported interface that shapes a single function's options or a seeder's local config (e.g. `RoleConfig` in `role.seeder.ts`) stays right where it's declared — moving it would only be relocation for its own sake, since nothing outside that file could ever import it.
+- `constants/*.constant.ts` — exported primitive constants: `SetMetadata` Reflector keys (`PERMISSIONS_KEY`), queue names (`LOG_QUEUE`, `EMAIL_NOTIFICATION_QUEUE`), and standalone config values (job retry counts, backoff delays). Even though a constant is only ever read by one queue registration, it still gets its own file here rather than staying inline — this keeps the "what enums/interfaces/constants does this module define" question answerable by listing three folders, not by reading every service and processor file.
+
+**Barrels:** none of these three folders gets its own `index.ts`. Import by direct file path (`from '../enums/log-status.enum'`) — the module-root `index.ts`/`public-api.ts` remains the only real barrel boundary (per the two-barrel rule above). A module only gets the folders it needs — no empty `enums/` in a module with no enums.
 
 ### Zone 3: `infrastructure/` — Technical Layer
 
@@ -260,6 +295,8 @@ Includes: filters, interceptors, base entities, shared DTOs, utility functions.
 **Conventions:**
 
 - Every subfolder exports through its own `index.ts` barrel. Import from the barrel (`src/common/utils`), never from a file inside it — this keeps future renames/moves inside `common/` a one-line barrel change instead of a repo-wide find/replace.
+- Do not add a single `src/common/index.ts` mega-barrel. Keep imports scoped to the relevant common subfolder.
+- Common subfolder barrels follow the same hygiene rules as module barrels: named exports only, `export type` for types, and no side effects.
 - `utils/` holds stateless pure functions only, named `*.util.ts` (e.g. `date-time.util.ts`, `s3-url.util.ts`).
 - `services/` holds `@Injectable()` classes, named `*.service.ts` (e.g. `s3-client.service.ts`, `email.service.ts`). If it has external dependencies (DB, S3, SMTP, external APIs) or DI-injected state, it's a service, not a util.
 - Config objects/schemas (Multer options, env validation, logger setup) go in `config/`, named `*.config.ts`.
@@ -282,19 +319,19 @@ modules/
     ├── services/
     │   └── article.service.ts
     ├── article.module.ts
-    ├── index.ts                     ← Full domain public API (for other modules)
-    └── api.ts                       ← HTTP surface (for controllers only)
+    ├── index.ts                     ← Domain public API (module wiring/types)
+    └── public-api.ts                       ← Callable public application surface
 ```
 
-### `index.ts` vs `api.ts` — Two Barrels, Two Audiences
+### `index.ts` vs `public-api.ts` — Two Barrels, Two Audiences
 
-Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home.
+Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `public-api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home. These barrels are architectural boundary contracts, not shortcuts for avoiding relative paths inside a module (see ADR-0013).
 
-|                   | `index.ts`                                                                  | `api.ts`                                            |
-| ----------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
-| **Used by**       | Other domain modules, `app.module.ts`                                       | Controllers in `src/api/v1/` only                   |
-| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | DTOs, services, decorators for routes               |
-| **Never exports** | DTOs, route decorators, route guards                                        | Module class, entities, events, internal interfaces |
+|                   | `index.ts`                                                                  | `public-api.ts`                                                                       |
+| ----------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Used by**       | Other domain modules, `app.module.ts`                                       | Controllers in `src/api/v1/`; domain services calling another module's public service |
+| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | Services, DTOs, decorators for routes, controller-facing types                        |
+| **Never exports** | DTOs, route decorators, route guards                                        | Module class, entities, events, internal interfaces                                   |
 
 **`index.ts` — Module wiring and domain types**
 
@@ -303,14 +340,14 @@ Every module exposes two barrel files with a **strict no-overlap rule**: if a sy
 export { ArticleModule } from './article.module'; // ← module class, for app.module.ts
 export { Article } from './entities/article.entity'; // ← entity, for domain services that need the type
 export { ArticleCreatedEvent } from './events/article-created.event'; // ← events
-// No ArticleService — services live in api.ts
-// No DTOs — DTOs live in api.ts
+// No ArticleService — services live in public-api.ts
+// No DTOs — DTOs live in public-api.ts
 ```
 
-**`api.ts` — Services, DTOs, and route decorators**
+**`public-api.ts` — Services, DTOs, and route decorators**
 
 ```typescript
-// modules/article/api.ts
+// modules/article/public-api.ts
 export { ArticleService } from './services/article.service'; // ← service, for both controllers and domain services
 export { CreateArticleDto } from './dto/create-article.dto';
 export { UpdateArticleDto } from './dto/update-article.dto';
@@ -323,13 +360,21 @@ export { FilterArticleDto } from './dto/filter-article.dto';
 **Import rules:**
 
 ```typescript
-// ✅ Controller importing — always use api.ts
+// ✅ Controller importing — always use public-api.ts
 // src/api/v1/article/article.controller.ts
-import { ArticleService, CreateArticleDto } from 'src/modules/article/api';
+import {
+  ArticleService,
+  CreateArticleDto,
+} from 'src/modules/article/public-api';
 
-// ✅ Domain service calling another module's service — use api.ts (services live there)
+// ✅ Domain service calling another module's service — use public-api.ts (services live there)
 // src/modules/workflow/services/workflow.service.ts
-import { ArticleService } from 'src/modules/article/api';
+import { ArticleService } from 'src/modules/article/public-api';
+
+// ✅ Own-module code uses relative direct imports — never its own barrel
+// src/modules/article/services/article.service.ts
+import { Article } from '../entities/article.entity';
+import { CreateArticleDto } from '../dto/create-article.dto';
 
 // ✅ Domain service needing an entity type or event — use index.ts
 // src/modules/workflow/services/workflow.service.ts
@@ -348,12 +393,42 @@ import { ArticleService } from 'src/modules/article';
 
 The no-overlap rule means every symbol has exactly one canonical import path. There is no need to guess which barrel to check.
 
+### Barrel Hygiene Rules
+
+Barrels must stay boring. They are public export manifests only:
+
+```typescript
+// ✅ CORRECT — named, side-effect-free, type-only where possible
+export { ArticleService } from './services/article.service';
+export { CreateArticleDto } from './dto/create-article.dto';
+export type { ArticleListItem } from './interfaces/article-list-item.interface';
+
+// ❌ WRONG — wildcard exports leak internals and hide API growth
+export * from './services/article.service';
+
+// ❌ WRONG — barrels never run code
+initializeArticleMetadata();
+```
+
+Rules:
+
+- No `export *` from `index.ts`, `public-api.ts`, or `common/*/index.ts`
+- Use `export type` for type-only exports
+- No runtime initialization, logging, metadata setup, or other side effects
+- Code inside a module imports its own files with relative direct paths, not `src/modules/<same-module>` or `src/modules/<same-module>/public-api`
+- Controllers import from `public-api.ts` only; if a controller needs a decorator/type, that symbol belongs in `public-api.ts`
+- Domain services may import another module's service from `public-api.ts`, but should not reuse HTTP DTOs unless that DTO is intentionally a cross-module service contract
+- Entity relation files (`*.entity.ts`) may direct-import other entity files for TypeORM relationship wiring
+- Seeder, data-source, and migration code may direct-import concrete entities and seeder classes as low-level database code
+
 ### Automated Enforcement (ESLint)
 
 These boundaries are enforced mechanically by `eslint.config.mjs`, so `npm run lint` fails on a violation:
 
-- **`no-restricted-imports`** blocks deep imports into a module's internals (e.g. `src/modules/auth/services/token.service`) — you must import through the `index.ts` / `api.ts` barrel. `*.entity.ts` files are exempt, since TypeORM relations legitimately reach across module internals.
+- **`no-restricted-imports`** blocks deep imports into a module's internals (e.g. `src/modules/auth/services/token.service`) — you must import through the `index.ts` / `public-api.ts` barrel. `*.entity.ts` files are exempt, since TypeORM relations legitimately reach across module internals.
 - **`import-x/no-cycle`** (error) rejects circular import dependencies between files. Entity files are exempt because bidirectional TypeORM relations (e.g. `User` ↔ `RefreshToken`) form intentional, lazily-resolved cycles.
+
+Follow-up mechanical checks should also reject wildcard barrel exports, own-module self-imports through root barrels, and overlap between `index.ts` and `public-api.ts`.
 
 An architecture violation surfaces as a lint error, not a runtime surprise.
 
@@ -401,12 +476,6 @@ Incoming HTTP Request
         │
         ▼
 ┌──────────────────────┐
-│ ActivityLog          │  Captures @LogActivity metadata
-│  Interceptor         │
-└──────────────────────┘
-        │
-        ▼
-┌──────────────────────┐
 │      TrimPipe        │  Strips leading/trailing whitespace from all body & query strings
 └──────────────────────┘
         │
@@ -446,7 +515,7 @@ Incoming HTTP Request
 > - `RequestIdMiddleware` — `app.module.ts` via `configure(consumer)`.
 > - Global guards — **only** `JwtAuthGuard` and `ThrottlerGuard`, as `APP_GUARD` providers in [app.module.ts](src/app.module.ts). `RolesGuard`/`PermissionsGuard`/`ResourceOwnershipGuard`/`SubjectGuard` are **not** global — they run only where a handler/controller adds `@UseGuards(...)`.
 > - `TrimPipe` then `ValidationPipe` — `app.useGlobalPipes(...)` in [main.ts](src/main.ts).
-> - Interceptors are spread across files: `ClassSerializerInterceptor` + `TimeoutInterceptor` in `main.ts`; `ActivityLogInterceptor` as `APP_INTERCEPTOR` in `app.module.ts`; `PresignedUrlInterceptor` + `ResponseInterceptor` as `APP_INTERCEPTOR` in [common.module.ts](src/common/common.module.ts). NestJS runs interceptors' pre-controller logic in registration order and their post-controller (response) logic in reverse, so on the way out `ResponseInterceptor` wraps first, then presigned-URL resolution, etc.
+> - Interceptors are spread across files: `ClassSerializerInterceptor` + `TimeoutInterceptor` in `main.ts`; `PresignedUrlInterceptor` + `ResponseInterceptor` as `APP_INTERCEPTOR` in [common.module.ts](src/common/common.module.ts). There is no global activity-log interceptor — log writes are explicit `LogQueueService` calls inside service methods (§11), not something that runs on every request. NestJS runs interceptors' pre-controller logic in registration order and their post-controller (response) logic in reverse, so on the way out `ResponseInterceptor` wraps first, then presigned-URL resolution, etc.
 
 ---
 
@@ -558,7 +627,7 @@ Client sends: Authorization: Bearer <accessToken>
 ### Getting the Current User in a Controller
 
 ```typescript
-import { CurrentUser, AuthenticatedUser } from 'src/modules/auth/api';
+import { CurrentUser, AuthenticatedUser } from 'src/modules/auth/public-api';
 
 @Get('profile')
 getProfile(@CurrentUser() user: AuthenticatedUser) {
@@ -569,7 +638,7 @@ getProfile(@CurrentUser() user: AuthenticatedUser) {
 ### Making an Endpoint Public
 
 ```typescript
-import { Public } from 'src/modules/auth/api';
+import { Public } from 'src/modules/auth/public-api';
 
 @Get('status')
 @Public()
@@ -580,12 +649,12 @@ getStatus() {
 
 ### Role-Based Access Control
 
-Authorization decorators live in the **role** module. `RequireRoles` + `RolesGuard` are exposed on `src/modules/role`; `RequirePermissions` + `PermissionsGuard` + `PermissionModule` on `src/modules/role/api`. Neither guard is global — apply it with `@UseGuards(...)` (commonly at the controller class level), then annotate the handler.
+Authorization decorators live in the **role** module. `RequireRoles` + `RolesGuard` are exposed on `src/modules/role`; `RequirePermissions` + `PermissionsGuard` + `PermissionModule` on `src/modules/role/public-api`. Neither guard is global — apply it with `@UseGuards(...)` (commonly at the controller class level), then annotate the handler.
 
 ```typescript
 import { UseGuards } from '@nestjs/common';
 import { RequireRoles, RolesGuard } from 'src/modules/role';
-import { RequirePermissions, PermissionsGuard, PermissionModule } from 'src/modules/role/api';
+import { RequirePermissions, PermissionsGuard, PermissionModule } from 'src/modules/role/public-api';
 
 // Coarse: only admins whose role is 'superadmin' or 'editor'
 @UseGuards(RolesGuard)
@@ -609,13 +678,13 @@ create(@Body() dto: CreateAdminDto) { ... }
 
 The system has two distinct authenticated subjects. **Always check `subjectType`** when authorization depends on it.
 
-| Property        | User                     | Admin                    |
-| --------------- | ------------------------ | ------------------------ |
-| `subjectType`   | `'USER'`                 | `'ADMIN'`                |
-| Identifier      | `userId`                 | `adminId`                |
-| Login method    | Phone + Password / OAuth | Email + Password         |
-| Has roles       | No                       | Yes                      |
-| Has permissions | No                       | Yes                      |
+| Property        | User                     | Admin            |
+| --------------- | ------------------------ | ---------------- |
+| `subjectType`   | `'USER'`                 | `'ADMIN'`        |
+| Identifier      | `userId`                 | `adminId`        |
+| Login method    | Phone + Password / OAuth | Email + Password |
+| Has roles       | No                       | Yes              |
+| Has permissions | No                       | Yes              |
 
 ### Restricting an Endpoint to a Subject Type — `@RequireSubject`
 
@@ -627,7 +696,7 @@ import {
   SubjectGuard,
   CurrentUser,
   AuthenticatedUser,
-} from 'src/modules/auth/api';
+} from 'src/modules/auth/public-api';
 
 @Controller({ path: 'app/me', version: '1' })
 @UseGuards(SubjectGuard)
@@ -661,137 +730,24 @@ POST /auth/register/profile      → registrationStage = COMPLETED ✓
 
 ## 9. Database & Entity Standards
 
-### Base Entity — Extend This Always
+Detailed database and TypeORM rules live in
+[docs/database-standards.md](docs/database-standards.md). Treat that file as
+the canonical implementation checklist for entities, repositories, relations,
+transactions, migrations, and seeds.
 
-Every entity **must** extend `BaseEntity`. It is an **abstract** class (no `@Entity()` decorator — that belongs on the concrete entity), uses `timestamptz` columns, and indexes `deletedAt` so soft-delete filtering stays fast:
+Summary:
 
-```typescript
-// src/common/entities/base.entity.ts
-export abstract class BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+- Normal mutable domain records extend `SoftDeletableEntity`; lifecycle records
+  extend `BaseEntity`; raw entity shapes require a documented exception.
+- Modules own their repositories. Cross-module data access goes through the
+  owning module's exported service.
+- Schema changes go through migrations generated under
+  `src/infrastructure/database/migrations/`.
+- `npx forge db ...` is the sanctioned database command surface.
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt!: Date;
-
-  @Index()
-  @DeleteDateColumn({ type: 'timestamptz' })
-  deletedAt?: Date; // Soft delete — never physically delete rows
-}
-```
-
-For append-only tables that must **not** be soft-deletable (the log tables), extend `BaseEntity` instead (`src/common/entities/base.entity.ts`) — same `id`/`createdAt`/`updatedAt`, but no `deletedAt`.
-
-### Creating an Entity
-
-```typescript
-import { BaseEntity } from 'src/common/entities';
-
-@Entity('articles')
-export class Article extends BaseEntity {
-  @Column({ length: 255 })
-  name: string;
-
-  @Column({ type: 'text', nullable: true })
-  description: string | null;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
-
-  @Column({ default: true })
-  isActive: boolean;
-
-  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'created_by' })
-  createdBy: User | null;
-}
-```
-
-### Entity Rules
-
-| Rule                                                           | Reason                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------ |
-| Always extend `BaseEntity`                                     | UUID PK, timestamps, soft delete included              |
-| Use soft deletes only (`DeleteDateColumn`)                     | Data is auditable, recoverable                         |
-| Name tables explicitly with snake_case `@Entity('table_name')` | Avoids TypeORM naming surprises                        |
-| Use `nullable: true` explicitly when a column can be null      | TypeORM defaults vary                                  |
-| Exclude sensitive fields with `@Exclude()`                     | `ClassSerializerInterceptor` strips them automatically |
-
-```typescript
-import { Exclude } from 'class-transformer';
-
-@Column({ select: false })
-@Exclude()
-password: string;
-```
-
-### Unique Columns on Soft-Deletable Entities — Use Partial Unique Indexes
-
-Because soft delete leaves the row in place, a plain `@Column({ unique: true })` would keep a deleted record's value reserved forever — re-using it (e.g. re-registering a deleted user's phone) fails with `duplicate key value violates unique constraint`. Scope uniqueness to **active** rows with a partial unique index instead of an unconditional unique constraint (see ADR-0007):
-
-```typescript
-@Entity('users')
-@Index('UQ_users_phone_active', ['phone'], {
-  unique: true,
-  where: '"deletedAt" IS NULL',
-})
-export class User extends BaseEntity {
-  @Column() // NOT @Column({ unique: true })
-  phone!: string;
-}
-```
-
-This lets deleted rows hold stale values while active rows stay unique. The existence pre-checks in services already ignore soft-deleted rows (TypeORM's default), so a reused value creates a fresh record.
-
-### Enum-Like Columns — `varchar` + `CHECK`, Never Native `enum`
-
-**Never** declare an enum-like column as a native database enum (`@Column({ type: 'enum', enum: X })`). Always use `varchar`, typed in TypeScript by an `enum`/`const ... as const` object, backed by a migration `CHECK` constraint (see ADR-0009). A native DB enum makes adding/renaming a value an awkward `ALTER TYPE` migration and creates a second source of truth that can drift from the TS enum.
-
-```typescript
-// src/modules/otp/constants/otp-status.enum.ts — the source of truth
-export enum OtpStatus {
-  PENDING = 'PENDING',
-  VERIFIED = 'VERIFIED',
-  EXPIRED = 'EXPIRED',
-  USED = 'USED',
-}
-
-// DTO — validates against the same enum
-export class FilterOtpDto {
-  @IsOptional()
-  @IsEnum(OtpStatus)
-  status?: OtpStatus;
-}
-
-// entity — varchar, typed by the enum, NOT type: 'enum'
-@Column({ type: 'varchar', default: OtpStatus.PENDING })
-status!: OtpStatus;
-
-// migration — CHECK mirrors the enum's values exactly
-await queryRunner.query(
-  `ALTER TABLE "otp_records" ADD CONSTRAINT "CK_otp_records_status" CHECK ("status" IN ('PENDING', 'VERIFIED', 'EXPIRED', 'USED'))`,
-);
-```
-
-Size the `varchar` length to comfortably fit the longest current value — there is no fixed universal width. Adding or renaming a value means updating the TS enum **and** writing a migration that drops and re-adds the `CHECK` constraint with the new value list, in the same PR.
-
-### Migrations — Never Use `synchronize: true`
-
-`synchronize: true` is **disabled** in production. Always generate migrations:
-
-```bash
-# After changing an entity — provide the output path (TypeORM v0.3 syntax):
-npm run migration:generate src/infrastructure/database/migrations/AddArticleTable
-
-# Apply migrations:
-npm run migration:run
-
-# Revert last migration:
-npm run migration:revert
-```
+Key decisions: ADR-0007 covers partial unique indexes for soft delete,
+ADR-0008 covers transaction management, ADR-0009 covers enum-like columns, and
+ADR-0012 covers the `forge` CLI.
 
 ---
 
@@ -851,113 +807,125 @@ async create(dto: CreateAdminDto): Promise<Admin> {
 
 ### Two Types of Logs
 
-| Type            | Table           | Purpose                                              | Who writes it                     |
-| --------------- | --------------- | ---------------------------------------------------- | --------------------------------- |
-| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)  | Interceptor or `ActivityLogEvent` |
-| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff | Interceptor or `AuditLogEvent`    |
+| Type            | Table           | Purpose                                              | Who writes it     |
+| --------------- | --------------- | ---------------------------------------------------- | ----------------- |
+| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)  | `LogQueueService` |
+| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff | `LogQueueService` |
 
-### Two Write Paths
+There is no interceptor and no `@LogActivity` decorator. Every log write is an explicit call from inside the service method that performs the underlying business operation — never inferred from route metadata, and never triggered from the controller layer.
 
-There are two distinct ways to write a log entry. Choose based on when the user identity is known.
+### Write Path — Direct Enqueue via `LogQueueService`
 
-#### Path 1 — `@LogActivity` Interceptor (authenticated endpoints)
-
-Use this for any endpoint protected by `JwtAuthGuard` where `request.user` is populated before the handler runs.
+`src/modules/log` registers a dedicated BullMQ queue (`LOG_QUEUE`) with a single `LogProcessor` that persists jobs to the appropriate table. Services call `LogQueueService` directly — there is **no `EventEmitter2` hop** for logs. This is a deliberate departure from the notification module's event-bridge pattern (§13): logs have exactly one producer-to-consumer relationship per call site, so the event-emitter indirection would add nothing. Use the event-bridge pattern when something else might need to subscribe to the same signal; use direct-enqueue when the queue is the only consumer, as it is here.
 
 ```typescript
-import { LogAction, LogActivity } from 'src/modules/log/api';
-
-@Patch('me')
-@LogActivity({
-  action: LogAction.UPDATE_PROFILE,
-  description: 'Profile updated',
-  resourceType: 'Auth',                              // optional
-  getResourceId: (_, req) =>                         // optional
-    (req as unknown as { user?: { id?: string } }).user?.id,
-})
-async updateProfile(@CurrentUser() user: AuthenticatedUser, ...) {
-  return this.userAuthService.updateProfile(...);
-}
-```
-
-The interceptor automatically logs `LogStatus.SUCCESS` on completion and `LogStatus.FAILURE` if the handler throws, then re-throws the error so exception filters still run normally.
-
-#### Path 2 — Service Events (`@Public()` endpoints and failure cases)
-
-`@Public()` endpoints run before authentication, so `request.user` is null and the interceptor skips logging. Domain services must emit events directly via `EventEmitter2`.
-
-```typescript
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildRequestContext } from 'src/common/utils';
 import {
-  ACTIVITY_LOG_EVENT,
-  ActivityLogEvent,
   LogAction,
+  LogQueueService,
   LogStatus,
-} from 'src/modules/log';
+} from 'src/modules/log/public-api';
 
 @Injectable()
-export class UserAuthService {
-  constructor(private eventEmitter: EventEmitter2) {}
+export class AdminService {
+  constructor(private readonly logQueueService: LogQueueService) {}
 
-  async userLogin(dto: UserLoginDto, request: Request) {
-    const user = await this.validateUser(dto).catch((error) => {
-      // Log failure before re-throwing
-      this.eventEmitter.emit(
-        ACTIVITY_LOG_EVENT,
-        new ActivityLogEvent({
-          userId: 'unknown',
-          action: LogAction.LOGIN,
-          description: 'User login failed',
-          resourceType: 'Auth',
-          status: LogStatus.FAILURE,
-          ...buildRequestContext(request),
-        }),
-      );
-      throw error;
-    });
+  async update(
+    id: string,
+    dto: UpdateAdminDto,
+    adminId: string,
+    request: Request,
+  ) {
+    try {
+      // ... perform the update ...
 
-    // Log success
-    this.eventEmitter.emit(
-      ACTIVITY_LOG_EVENT,
-      new ActivityLogEvent({
-        userId: user.id,
-        action: LogAction.LOGIN,
-        description: 'User logged in',
-        resourceType: 'Auth',
-        resourceId: user.id,
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin updated another admin',
+        entityName: 'Admin',
+        entityId: id,
         status: LogStatus.SUCCESS,
         ...buildRequestContext(request),
-      }),
-    );
+      });
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin update failed',
+        entityName: 'Admin',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
+    }
   }
 }
 ```
 
-Use `AuditLogEvent` / `AUDIT_LOG_EVENT` for admin service events — same pattern.
+Use `enqueueActivityLog` for end-user actions and `enqueueAuditLog` for admin-driven ones — the call site always knows which table applies. Where a single method serves both an admin-zone and an app-zone caller (e.g. `UserService.update`, shared by an admin editing another user and a user editing their own profile), the caller passes an `actor` describing who made the request, and the method branches explicitly between the two `enqueue*` calls — the branching stays in application code, not inside `LogQueueService`.
 
-### Audit Log Before/After Diffs
+`LogQueueService` swallows its own enqueue failures (logs via `Logger.error`, never throws) — a Redis outage must never fail the business operation that already succeeded. Jobs run with the same retry policy as email jobs (`attempts: 3`, exponential backoff, `removeOnComplete: true`, `removeOnFail: { count: 100 }`).
 
-To capture what changed, use `diffAuditValues` + `attachAuditLogMetadata` in the service. The interceptor reads the metadata off the return value and writes the diff to the audit log.
+### Success/Failure Semantics
+
+- **Non-transactional methods** (the large majority): "success" means the method resolved without throwing. Enqueue the `SUCCESS` log immediately after the write; enqueue a `FAILURE` log (in a `catch` block, then re-throw) if anything before that point throws.
+- **Transactional methods** (only `RoleService.create`/`update` today, via `@Transactional()`): the enqueue must happen only after the transaction actually commits, since a later statement in the same transaction could still roll back everything. Because `@nestjs-cls/transactional` (this project's installed version) does not expose a commit-hook API, the pattern is to split the method into a private `@Transactional()`-decorated core (e.g. `createInTransaction`) and a public, non-transactional wrapper that awaits the core and enqueues afterward. The wrapper's `await` only resolves once the decorator's wrapped promise has resolved — which is only after commit — so this achieves the same guarantee without a hook:
 
 ```typescript
-import {
-  attachAuditLogMetadata,
-  diffAuditValues,
-} from 'src/modules/log/api';
+async create(dto: CreateRoleDto, adminId: string, request: Request) {
+  try {
+    const role = await this.createInTransaction(dto); // resolves only after commit
+    await this.logQueueService.enqueueAuditLog({ /* SUCCESS */ });
+    return role;
+  } catch (error) {
+    await this.logQueueService.enqueueAuditLog({ /* FAILURE */ });
+    throw error;
+  }
+}
 
-async updateAdmin(id: string, dto: UpdateAdminDto): Promise<Admin> {
-  const before = await this.findById(id);
-  const updated = await this.adminRepository.save({ ...before, ...dto });
-
-  const diff = diffAuditValues(before, updated, ['fullName', 'email', 'isActive']);
-  return attachAuditLogMetadata(updated, diff);
-  // Interceptor consumes the non-enumerable __auditLogMetadata property.
-  // It never appears in the API response.
+@Transactional()
+private async createInTransaction(dto: CreateRoleDto) {
+  /* ... the actual transactional writes ... */
 }
 ```
 
-`diffAuditValues` automatically strips any field named `password` — no manual redaction needed.
+Failure logs are never gated on this — they're emitted immediately at the point of failure, since there's no commit to wait on either way.
+
+### Audit Log Before/After Diffs
+
+`diffAuditValues` is a pure function — it returns a plain `{ oldValue, newValue }` object, nothing more. Pass the result straight into the `enqueueAuditLog` call.
+
+```typescript
+import { diffAuditValues } from 'src/modules/log/public-api';
+
+async updateAdmin(id: string, dto: UpdateAdminDto, adminId: string, request: Request) {
+  const before = await this.findById(id);
+  const updated = await this.adminRepository.save({ ...before, ...dto });
+
+  const { oldValue, newValue } = diffAuditValues(before, updated, ['fullName', 'email', 'isActive']);
+
+  await this.logQueueService.enqueueAuditLog({
+    adminId,
+    action: LogAction.UPDATE,
+    entityName: 'Admin',
+    entityId: id,
+    description: 'Admin updated another admin',
+    oldValue,
+    newValue,
+    status: LogStatus.SUCCESS,
+    ...buildRequestContext(request),
+  });
+
+  return updated;
+}
+```
+
+`diffAuditValues` automatically redacts sensitive fields such as passwords,
+tokens, OTPs, API keys, provider secrets, authorization headers, cookies, and
+close variants — no manual redaction needed. `CreateActivityLogData` (activity
+logs) has no `oldValue`/`newValue` fields — diffs are an audit-log-only
+concept.
 
 ### Log Retention
 
@@ -1033,7 +1001,7 @@ Emails are **never sent synchronously** during a request. They are queued (`EMAI
 `NotificationService` exposes **purpose-specific** methods, not a generic `sendEmail`. The current methods are:
 
 | Method                                 | Channel | Behaviour                                |
-| --------------------------------------- | ------- | ------------------------------------------ |
+| -------------------------------------- | ------- | ---------------------------------------- |
 | `sendForgotPasswordResetCode(payload)` | Email   | Fire-and-forget (queued, returns `void`) |
 
 When adding a new email type, add a method here plus a job handler in `EmailProcessor` — do not call Nodemailer from a request handler.
@@ -1130,23 +1098,20 @@ export class CreateArticleDto {
 export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
 ```
 
-### Pagination DTO — Always Extend This
+### Pagination, Filtering, and Sorting
 
-```typescript
-import { PaginationFilterDto } from 'src/common/dto';
+List endpoint rules live in
+[docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md).
+ADR-0010 records the sorting decision (`SortableFilterDto` +
+`resolveSortField`).
 
-export class FilterArticleDto extends PaginationFilterDto {
-  @IsOptional()
-  @IsEnum(ArticleCategory)
-  category?: ArticleCategory;
+Short version:
 
-  @IsOptional()
-  @IsString()
-  search?: string;
-}
-```
-
-`PaginationFilterDto` provides: `page` (default 1), `limit` (default 10), and `getAll` (default false — return all rows, bypassing pagination). Do not redefine these. Add resource-specific filters like `search` in the subclass.
+- Paginated list DTOs extend `PaginationFilterDto`.
+- Sortable list DTOs extend `SortableFilterDto`.
+- Services allowlist client-controlled sort fields before calling `.orderBy()`.
+- Resource-specific filters such as `search`, `isBanned`, `startDate`, and
+  `endDate` live on the resource filter DTO.
 
 ### Global String Trimming
 
@@ -1190,37 +1155,16 @@ No action needed — this is automatic.
 
 ## 15. Transaction Management
 
+See [docs/database-standards.md](docs/database-standards.md#transactions)
+for the canonical transaction checklist.
+
 Transactions are powered by [`@nestjs-cls/transactional`](https://papooch.github.io/nestjs-cls/plugins/available-plugins/transactional) with the TypeORM adapter (registered globally in `app.module.ts`). Use `@Transactional()` for operations that must succeed or fail together. Inside a transactional method, **all** database access must go through `this.txHost.tx` — the transaction-aware `EntityManager` from the injected `TransactionHost`. Outside a transaction, `txHost.tx` transparently falls back to the default manager, so the same code works in non-transactional methods too. Propagation is REQUIRED by default: a nested `@Transactional()` call reuses the active transaction rather than opening a new one.
 
-> Use `this.txHost.tx` for both reads and writes inside transactional services — do **not** mix in `@InjectRepository(...)` repositories, as those bypass the active transaction and won't see uncommitted rows.
-
-```typescript
-import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
-import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
-
-@Injectable()
-export class OrderService {
-  constructor(
-    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
-  ) {}
-
-  @Transactional()
-  async placeOrder(dto: PlaceOrderDto): Promise<Order> {
-    // All queries in this method run in a single DB transaction
-    const order = await this.txHost.tx.save(Order, { ...dto });
-    await this.inventoryService.deductStock(dto.articleId, dto.quantity);
-    await this.paymentService.charge(dto.paymentDetails);
-    // If any line throws, ALL changes are rolled back automatically
-    return order;
-  }
-}
-```
-
-**When to use `@Transactional()`:**
-
-- Creating multiple related records
-- Updating one record based on another
-- Any operation where partial failure would corrupt data
+Use a transaction when partial success would corrupt domain state. If a side
+effect must happen only after commit, split the method into a private
+transactional core and a public wrapper that awaits it before enqueuing the
+side effect. See §11 for the log-specific version of that pattern and
+ADR-0008 for the decision record.
 
 ---
 
@@ -1228,20 +1172,18 @@ export class OrderService {
 
 ### Auth Decorators
 
-| Decorator                            | Import From            | Effect                                                                           |
-| ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------- |
-| `@Public()`                          | `src/modules/auth/api` | Bypasses JWT authentication                                                      |
-| `@CurrentUser()`                     | `src/modules/auth/api` | Injects current authenticated user                                               |
-| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`)                         |
-| `@CheckOwnership()`                  | `src/modules/auth`     | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
-| `@RequireRoles('admin', 'editor')`   | `src/modules/role`     | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
-| `@RequirePermissions({...})`         | `src/modules/role/api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
+| Decorator                            | Import From                   | Effect                                                                           |
+| ------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------- |
+| `@Public()`                          | `src/modules/auth/public-api` | Bypasses JWT authentication                                                      |
+| `@CurrentUser()`                     | `src/modules/auth/public-api` | Injects current authenticated user                                               |
+| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/public-api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`)                         |
+| `@CheckOwnership()`                  | `src/modules/auth`            | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
+| `@RequireRoles('admin', 'editor')`   | `src/modules/role`            | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
+| `@RequirePermissions({...})`         | `src/modules/role/public-api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
 
-### Logging Decorators
+### Logging
 
-| Decorator                                                              | Import From           | Effect                                                                                                                                                             |
-| ---------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@LogActivity({ action, description, resourceType?, getResourceId? })` | `src/modules/log/api` | Records user action to activity log on success **and** failure. Only works on authenticated (non-`@Public()`) endpoints — use service events for public endpoints. |
+There is no logging decorator. Activity/audit logs are written by calling `LogQueueService.enqueueActivityLog(...)` / `enqueueAuditLog(...)` directly from the service method performing the write — see §11.
 
 ### Common Decorators
 
@@ -1254,7 +1196,24 @@ export class OrderService {
 
 ## 17. Environment Variables
 
-Copy `.env.example` to `.env` and fill in all values. The Joi schema in [env.validation.ts](src/common/config/env.validation.ts) is the source of truth — it runs with `allowUnknown: true`, so vars not listed there (e.g. `SMTP_USERNAME`, `SMTP_USER_PASSWORD`) are read directly via `ConfigService` and are not validated. Variables marked **required** below abort startup if missing.
+Copy `.env.example` to `.env` and fill in all values. The Joi schema in
+[env.validation.ts](src/common/config/env.validation.ts) is the source of
+truth, and ADR-0014 records the configuration policy.
+
+Environment variables are a strict application contract:
+
+- Every app env var must be declared in the Joi schema, represented in
+  `.env.example`, and documented here.
+- Unknown variables in the env-file contract abort Nest app startup. Normal shell
+  variables such as `PATH` are not part of that strict check.
+- Runtime code should consume namespaced config keys from `registerAs()` config
+  objects, e.g. `jwt.secret`, `redis.host`, and `seed.superAdmin.email`.
+- Do not read raw `process.env` or raw uppercase env keys in application code.
+  Exceptions are config factories, bootstrap/tooling boundaries, and code paths
+  that cannot receive injected config.
+- Time-based env names must include their unit.
+- Provider credentials are grouped behind explicit toggles. Disabled providers
+  may have blank credentials; enabled providers must have complete credentials.
 
 ```bash
 # App
@@ -1273,11 +1232,11 @@ DB_NAME=nest_forge
 # Auth
 AUTH_PASSWORD_SALT_ROUNDS=10     # bcrypt cost factor (default 10)
 
-# JWT (JWT_SECRET, JWT_REFRESH_SECRET REQUIRED — must be 32+ chars)
+# JWT (secrets REQUIRED — must be 32+ chars and not placeholders)
 JWT_SECRET=your-very-long-secret-here
 JWT_REFRESH_SECRET=another-very-long-secret-here
-JWT_EXPIRATION=900000            # 15 minutes in ms (default)
-JWT_REFRESH_EXPIRATION=2592000000  # 30 days in ms (default)
+JWT_ACCESS_TOKEN_TTL_SECONDS=900       # 15 minutes (default)
+JWT_REFRESH_TOKEN_TTL_SECONDS=2592000  # 30 days (default)
 
 # Redis
 REDIS_HOST=localhost             # default localhost
@@ -1287,25 +1246,26 @@ REDIS_PREFIX_KEY=nest-forge      # BullMQ/cache key prefix (default "nest-forge"
 # CORS (comma-separated origins, or '*'/'all'/'true' for all — dev only)
 CORS_ORIGINS=http://localhost:3000
 
-# Email (SMTP_FROM_NAME is REQUIRED)
-SMTP_FROM_NAME=nest-forge
+# Seed defaults (all required except SEED_SMTP_PASSWORD)
+SEED_SUPER_ADMIN_EMAIL=admin@example.com
+SEED_SUPER_ADMIN_PASSWORD=your-strong-local-password
+SEED_SMTP_FROM_NAME=nest-forge
+SEED_SMTP_USERNAME=noreply@example.com
+SEED_SMTP_PASSWORD=
 
-# AWS S3 (all optional — only needed when file uploads are used)
+# AWS S3 (credentials required only when S3_ENABLED=true)
+S3_ENABLED=false
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=ap-southeast-1
 AWS_BUCKET_NAME=my-project-bucket
 AWS_ENDPOINT=                    # optional custom endpoint (e.g. S3-compatible storage)
 
-# OAuth (optional)
-GOOGLE_CLIENT_ID=...
-APPLE_CLIENT_ID=...
-
 # OTP / SMS
 OTP_MOCK_ENABLED=true            # skip real SMS in dev
 OTP_MOCK_CODE=000000             # 6-digit mock code (default 000000)
-SMS_MOCK_ENABLED=false           # default false
-# SMS provider (Poh) — all optional, required only when sending real SMS:
+SMS_MOCK_ENABLED=true            # default true
+SMS_POH_ENABLED=false            # credentials required when true and SMS_MOCK_ENABLED=false
 SMS_POH_API_KEY=...
 SMS_POH_API_SECRET_KEY=...
 SMS_POH_BASE_API_URL=...
@@ -1315,272 +1275,123 @@ SMS_POH_API_SENDER_ID=...
 
 ---
 
-## 18. Database Migrations & Seeding
+## 18. Security Standards
 
-> **Note:** This template ships a single baseline migration, `CreateFoundationSchema`
-> (`src/infrastructure/database/migrations/1784000000000-CreateFoundationSchema.ts`), which creates
-> the full foundation schema in one pass — `synchronize` is `false`. It also carries the
-> constraints TypeORM does not emit from decorators alone, including polymorphic-owner `CHECK`
-> constraints (e.g. `CK_refresh_tokens_owner`, ensuring a `RefreshToken` belongs to exactly one of
-> `User`/`Admin`) and enum-backed `CHECK` constraints (e.g. `CK_users_login_provider`,
-> `CK_otp_records_status`, `CK_otp_records_purpose`). Run `forge db migrate run` to apply it, then
-> generate further migrations the normal way as entities evolve.
+Detailed security rules live in
+[docs/security-standards.md](docs/security-standards.md). Treat that file as
+the canonical implementation checklist for route authorization, sensitive data
+exposure, secrets/configuration, input safety, logging redaction, throttling,
+error disclosure, and operational security.
+
+The short version:
+
+- Routes are authenticated by default. `@Public()` is an explicit opt-out and
+  needs a narrow pre-auth reason.
+- Admin endpoints use permission guards; app endpoints use subject guards and
+  derive the target from `@CurrentUser()`.
+- Sensitive fields use both `select: false` and `@Exclude()`.
+- App-zone responses use whitelist DTOs with `@Expose()`.
+- Secrets never have production defaults and never appear in logs, responses,
+  audit diffs, migrations, or seed data.
+- Public auth/provider endpoints need stricter route-level throttles than the
+  global baseline.
+
+## 19. Database Migrations & Seeding
+
+See [docs/database-standards.md](docs/database-standards.md#migrations) for
+the canonical migration and seeding checklist.
+
+> **Note:** This template ships a single baseline migration,
+> `src/infrastructure/database/migrations/1784213162334-init.ts`, which creates
+> the current foundation schema in one pass — `synchronize` is `false`. Run
+> `npx forge db migrate run` to apply it, then generate further migrations as
+> entities evolve. Known schema-hardening drift, including missing enum and
+> ownership `CHECK` constraints, is documented in
+> [docs/database-standards.md#known-drift](docs/database-standards.md#known-drift).
 
 ### The `forge` CLI
 
-The project ships a purpose-built CLI at `cli/` that wraps all database operations under a single `forge db` command tree. It is registered as a local binary in `package.json`:
-
-```json
-"bin": { "forge": "./cli/index.ts" }
-```
-
-Run it directly with `npx forge` or install locally:
+The project ships a purpose-built CLI at `cli/` that wraps **all** database
+operations under a single `forge db` command tree. It is the sole sanctioned
+way to touch the database — there is no parallel `npm run migration:*` or
+`npm run db:*` path, and no raw `npm run typeorm` escape hatch.
 
 ```bash
-npx ts-node cli/index.ts db --help
+npx forge db --help
 ```
 
-**Why use `forge` instead of raw `npm run` scripts?**
-
-|                       | `forge` CLI                                           | `npm run migration:*`                   |
-| --------------------- | ----------------------------------------------------- | --------------------------------------- |
-| Migration output path | Enforced to `src/infrastructure/database/migrations/` | Must be typed manually (full path)      |
-| Naming                | Just pass the name: `AddArticleTable`                 | Full path required                      |
-| Discoverability       | `forge db --help` lists all sub-commands              | Must read `package.json`                |
-| Seeding               | `forge db seed / clear / reset`                       | `npm run db:seed / db:clear / db:reset` |
-
-### `forge db` Command Tree
-
-```
-forge db
-├── migrate
-│   ├── generate <name>   Generate a migration into src/infrastructure/database/migrations/
-│   ├── run               Apply all pending migrations
-│   └── revert            Revert the last applied migration
-├── seed                  Run all seeders
-├── clear                 Delete all data
-└── reset                 clear + seed in sequence
-```
-
-### Migration Commands
+Use the CLI to generate migrations, apply/revert/status migrations, seed,
+clear, and reset databases. Production database commands run against the
+compiled build, and destructive production commands require confirmation.
+See [ADR-0012](docs/adr/0012-forge-cli-as-primary-database-tool.md) for the
+rationale and [docs/database-standards.md](docs/database-standards.md) for the
+full command reference.
 
 ```bash
-# Generate a new migration — just provide the name, path is enforced automatically
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate AddArticleTable
-# Creates: src/infrastructure/database/migrations/<timestamp>-AddArticleTable.ts
-
-# Apply all pending migrations
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
-
-# Revert the last applied migration
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate revert
+npx forge db migrate generate AddArticleTable
+npx forge db migrate run
+npx forge db seed
 ```
-
-Equivalent `npm run` aliases (for quick use in development):
-
-```bash
-npm run migration:generate src/infrastructure/database/migrations/AddArticleTable
-npm run migration:run
-npm run migration:revert
-
-# Production (compiled JS):
-npm run migration:run:prod
-npm run migration:revert:prod
-```
-
-> **Tip:** Always review the generated migration file before running it. TypeORM infers the schema diff but can emit unexpected `DROP COLUMN` statements when column options change.
-
-### Seeding Commands
-
-```bash
-# Seed the database (creates roles, permissions, superadmin, settings)
-npx ts-node -r tsconfig-paths/register cli/index.ts db seed
-
-# Clear all data
-npx ts-node -r tsconfig-paths/register cli/index.ts db clear
-
-# Reset = clear + seed (sequential, exits on clear failure)
-npx ts-node -r tsconfig-paths/register cli/index.ts db reset
-```
-
-Equivalent `npm run` aliases:
-
-```bash
-npm run db:seed
-npm run db:clear
-npm run db:reset
-```
-
-**Seeding creates:**
-
-- Default roles: `superadmin`, `admin`, `editor`, `viewer`
-- All permissions for all modules
-- Superadmin account (credentials from env vars)
-- Default application settings
 
 ---
 
-## 19. Best Practices & Rules
+## 20. Best Practices & Rules
 
-### Architecture Rules (Non-Negotiable)
+This document owns the architectural shape of the system: the four zones,
+module boundaries, request lifecycle, module template, and quality gates. The
+detailed implementation checklists live in dedicated standards docs:
 
-1. **Never put business logic in a controller.** Controllers call services and return.
-2. **Never access another module's repository directly.** Use that module's exported service.
-3. **Use the right barrel — no deep imports.** Controllers import from `api.ts`. Domain services import services from `api.ts` and entities/events from `index.ts`. No symbol appears in both barrels.
-4. **Always extend `BaseEntity`.** No entity without UUID, timestamps, and soft delete.
-5. **Never use `synchronize: true`** in TypeORM config. Always write migrations.
-6. **Never store presigned URLs in the database.** Store the S3 key only.
-7. **Never send emails/SMS synchronously.** Always queue them via `NotificationService`.
-8. **Always validate environment variables.** Add new vars to the Joi schema in `env.validation.ts`.
-9. **Respect module boundaries — they're linted.** `no-restricted-imports` and `import-x/no-cycle` in `eslint.config.mjs` enforce barrel imports and reject circular dependencies. Run `npm run lint`.
-10. **Never use a native database `enum` type.** Use `varchar` + a TS `enum` + a migration `CHECK` constraint instead (see §9 and ADR-0009).
+- Database, TypeORM, relations, migrations, seeds, and transactions:
+  [docs/database-standards.md](docs/database-standards.md).
+- Route authorization, sensitive data, secrets, input safety, logging
+  redaction, and abuse controls:
+  [docs/security-standards.md](docs/security-standards.md).
+- Pagination, filtering, and sorting:
+  [docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md).
+- Review rules and mechanical checks:
+  [docs/review/ARCHITECTURE-COMPLIANCE.md](docs/review/ARCHITECTURE-COMPLIANCE.md).
 
-### Code Quality Rules
+The non-negotiable architectural habits remain:
 
-```typescript
-// ✅ Use readonly for injected dependencies
-constructor(private readonly userService: UserService) {}
-
-// ✅ Use explicit return types on service methods
-async findAll(filter: FilterUserDto): Promise<[User[], number]> { ... }
-
-// ✅ Use PartialType for update DTOs
-export class UpdateUserDto extends PartialType(CreateUserDto) {}
-
-// ✅ Use @Exclude() on sensitive entity fields
-@Column()
-@Exclude()
-password: string;
-
-// ✅ Always log with context
-private readonly logger = new Logger(UserService.name);
-
-// ❌ Never use console.log
-console.log('something happened');  // Use this.logger.log() instead
-
-// ❌ Never catch errors silently
-try {
-  await something();
-} catch (e) {
-  // silent catch — this hides bugs
-}
-```
-
-### Security Rules
-
-1. Hash passwords with bcryptjs — use `PasswordHashUtil`, never roll your own
-2. Never log passwords, tokens, or secrets
-3. Always validate and sanitize input — DTOs with class-validator handle this
-4. Use parameterized queries — TypeORM repository methods are safe by default
-5. Rate limiting is global — add stricter limits on auth endpoints with `@Throttle()`
-
-### Database & Query Performance
-
-**Avoid N+1 queries.** Never load a relation by calling a `findOne`/service lookup once per row in a loop — load it in the same query instead.
-
-```typescript
-// ❌ WRONG — one query per admin (N+1)
-const admins = await this.adminRepository.find();
-for (const admin of admins) {
-  admin.role = await this.roleRepository.findOne({ where: { id: admin.roleId } });
-}
-
-// ✅ Simple lookup by id — use `relations`
-const admin = await this.adminRepository.findOne({
-  where: { id },
-  relations: ['role'],
-});
-
-// ✅ Filtered/paginated list, or multi-level relations — use the query builder
-const [admins, total] = await this.adminRepository
-  .createQueryBuilder('admin')
-  .leftJoinAndSelect('admin.role', 'role')
-  .skip(skip)
-  .take(limit)
-  .getManyAndCount();
-```
-
-Use `relations: [...]` for a simple lookup by id; use `createQueryBuilder` + `leftJoinAndSelect` once filtering, pagination, ordering, or multi-level relations are involved. Always paginate list endpoints via `PaginationFilterDto` (`skip`/`take`, `getAll` opt-out — see §14); don't hand-roll a second pagination shape.
-
-Never set `eager: true` on a relation — always load relations explicitly (`relations:`/`leftJoinAndSelect`) so each call site controls its own query cost instead of paying for a join it doesn't need.
-
-Every `@ManyToOne` sets `onDelete` explicitly — never leave it to the TypeORM default. Pick based on ownership:
-
-| Relationship                                          | `onDelete` |
-| ------------------------------------------------------ | ---------- |
-| Owned child record (e.g. `RefreshToken` → `User`)      | `CASCADE`  |
-| Optional/nullable reference (e.g. `AuditLog` → `Admin`) | `SET NULL` |
-| Protected reference data (e.g. `Admin` → `Role`)        | `RESTRICT` |
-
-### Request-Level Performance & Caching
-
-The app already wires up `CacheModule` globally (`app.module.ts`, Redis-backed, default TTL 600s). Use it for hot reads that don't need to be strictly real-time, following the existing convention (`src/modules/auth/services/registration-session.service.ts`):
-
-```typescript
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
-
-@Injectable()
-export class ArticleService {
-  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
-
-  private getKey(id: string): string {
-    return `article:${id}`;
-  }
-
-  async findById(id: string): Promise<Article> {
-    const cached = await this.cacheManager.get<Article>(this.getKey(id));
-    if (cached) return cached;
-
-    const article = await this.articleRepository.findOneOrFail({ where: { id } });
-    await this.cacheManager.set(this.getKey(id), article, 300 * 1000); // explicit TTL, don't rely on the global default when it doesn't fit
-    return article;
-  }
-
-  async update(id: string, dto: UpdateArticleDto): Promise<Article> {
-    const article = await this.articleRepository.save({ id, ...dto });
-    await this.cacheManager.del(this.getKey(id)); // invalidate in the same method that writes
-    return article;
-  }
-}
-```
-
-**Rule:** any service that caches a read must invalidate (`cacheManager.del`) the corresponding key(s) in every method that writes/updates/deletes that same data. Cache and database must never be allowed to silently diverge.
-
-Never perform blocking or CPU-heavy work synchronously in the request path — if it isn't needed for the immediate response, queue it (see §13's BullMQ pattern) rather than making the caller wait.
-
-### General Backend Hygiene
-
-- **Idempotency:** for mutation endpoints a client may retry (e.g. after a timeout), rely on the existing partial-unique-index + `23505` → `409 Conflict` mapping (§9, ADR-0007) as the safety net rather than building bespoke idempotency-key infrastructure.
-- **Defensive timeouts on outbound calls:** third-party calls (S3, SMS, OAuth) should set their own client-level timeout rather than relying solely on the global 10s controller timeout (`@RequestTimeout`, §16) — a slow outbound call should fail fast, not just cut off the HTTP response.
-- **N+1 across module boundaries too:** if a loop calls another module's service method once per item, check whether that service should expose a batch method instead of accepting the per-item round trips.
+1. Controllers are thin and contain no business logic.
+2. Domain modules own their entities and repositories.
+3. Cross-module access goes through exported services, not foreign
+   repositories.
+4. Controllers and services use the correct module barrels.
+5. Database changes go through migrations and the `forge` CLI.
+6. Security controls are designed into the endpoint, not patched on at the end.
+7. Async side effects use the queue/event patterns documented in this file.
+8. Mechanical checks run before a change is considered ready.
 
 ---
 
-## 20. Common Mistakes to Avoid
+## 21. Common Mistakes to Avoid
 
-| Mistake                                                                  | Correct Approach                                                                                                 |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Using `@LogActivity` on a `@Public()` endpoint                           | `@Public()` endpoints have no `request.user` — emit `ActivityLogEvent`/`AuditLogEvent` from the service instead  |
-| Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `api.ts`                                               |
-| Domain service importing an entity or event from `api.ts`                | Entities and events live in `index.ts` — `api.ts` has no entities                                                |
-| Domain service importing a service from `index.ts`                       | Services live in `api.ts` — use `import { FooService } from 'src/modules/foo/api'`                               |
-| Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `api.ts`; module class/entities/events → `index.ts` |
-| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `api.ts` for services/DTOs, `index.ts` for entities/events                       |
-| Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                         |
-| Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                      |
-| Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                  |
-| Sending emails inside a request handler                                  | Queue via `NotificationService`                                                                                  |
-| Throwing raw `Error` objects                                             | Throw NestJS `HttpException` subclasses                                                                          |
-| Using `console.log` for debugging                                        | Use `Logger` from `@nestjs/common`                                                                               |
-| Forgetting `@Exclude()` on password fields                               | Always add `@Exclude()` to sensitive columns                                                                     |
-| Writing business logic in a controller                                   | Move all logic to the service                                                                                    |
-| Creating entities without extending `BaseEntity`                         | Always extend `BaseEntity`                                                                                       |
-| Creating a circular import between modules                               | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/`  |
+| Mistake                                                                  | Correct Approach                                                                                                        |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Writing audit/activity logs synchronously from a controller              | Call `LogQueueService.enqueueActivityLog()`/`enqueueAuditLog()` from the service, only after the write succeeds         |
+| Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `public-api.ts`                                               |
+| Domain service importing an entity or event from `public-api.ts`         | Entities and events live in `index.ts` — `public-api.ts` has no entities                                                |
+| Domain service importing a service from `index.ts`                       | Services live in `public-api.ts` — use `import { FooService } from 'src/modules/foo/public-api'`                        |
+| Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `public-api.ts`; module class/entities/events → `index.ts` |
+| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `public-api.ts` for services/DTOs, `index.ts` for entities/events                       |
+| Using wildcard exports in a barrel (`export * from ...`)                 | Use named exports only so public API growth is explicit                                                                 |
+| Importing a module's own barrel from inside that same module             | Use relative direct imports (`../entities/user.entity`) to avoid self-cycles                                            |
+| Adding nested domain barrels (`dto/index.ts`, `services/index.ts`)       | Only module-root `index.ts`/`public-api.ts` are domain boundary barrels                                                 |
+| Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                                |
+| Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                             |
+| Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                         |
+| Sending emails inside a request handler                                  | Queue via `NotificationService`                                                                                         |
+| Throwing raw `Error` objects                                             | Throw NestJS `HttpException` subclasses                                                                                 |
+| Using `console.log` for debugging                                        | Use `Logger` from `@nestjs/common`                                                                                      |
+| Forgetting `@Exclude()` on password fields                               | Always add `@Exclude()` to sensitive columns                                                                            |
+| Writing business logic in a controller                                   | Move all logic to the service                                                                                           |
+| Creating normal mutable entities without `SoftDeletableEntity`           | Use `SoftDeletableEntity`; reserve `BaseEntity`/raw entities for documented lifecycle, log, or join-table exceptions    |
+| Creating a circular import between modules                               | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/`         |
 
 ---
 
-## 21. Adding a New Module — Step-by-Step
+## 22. Adding a New Module — Step-by-Step
 
 Follow this checklist when creating a new domain module (example: `article`).
 
@@ -1590,23 +1401,23 @@ Follow this checklist when creating a new domain module (example: `article`).
 mkdir -p src/modules/article/{dto,entities,services}
 touch src/modules/article/article.module.ts
 touch src/modules/article/index.ts
-touch src/modules/article/api.ts
+touch src/modules/article/public-api.ts
 ```
 
 ### Step 2 — Create the Entity
 
 ```typescript
 // src/modules/article/entities/article.entity.ts
-import { Entity, Column } from 'typeorm';
-import { BaseEntity } from 'src/common/entities';
+import { SoftDeletableEntity } from 'src/common/entities';
+import { Column, Entity } from 'typeorm';
 
 @Entity('articles')
-export class Article extends BaseEntity {
+export class Article extends SoftDeletableEntity {
   @Column({ length: 255 })
-  name: string;
+  name!: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
+  price!: number;
 }
 ```
 
@@ -1709,14 +1520,14 @@ export class ArticleModule {}
 // src/modules/article/index.ts
 export { ArticleModule } from './article.module'; // for app.module.ts imports
 export { Article } from './entities/article.entity'; // entity type for other domain services
-// No ArticleService — services live in api.ts
-// No DTOs — DTOs live in api.ts
+// No ArticleService — services live in public-api.ts
+// No DTOs — DTOs live in public-api.ts
 ```
 
-**`api.ts`** — services, DTOs, and route decorators only (no module class, no entities):
+**`public-api.ts`** — services, DTOs, and route decorators only (no module class, no entities):
 
 ```typescript
-// src/modules/article/api.ts
+// src/modules/article/public-api.ts
 export { ArticleService } from './services/article.service';
 export { CreateArticleDto } from './dto/create-article.dto';
 export { UpdateArticleDto } from './dto/update-article.dto';
@@ -1743,7 +1554,7 @@ import {
   ArticleService,
   CreateArticleDto,
   UpdateArticleDto,
-} from 'src/modules/article/api';
+} from 'src/modules/article/public-api';
 import { RequireRoles, RolesGuard } from 'src/modules/role';
 
 @Controller({ path: 'admin/articles', version: '1' }) // → /api/v1/admin/articles
@@ -1808,13 +1619,9 @@ Pick the API-module pattern when a zone has multiple controllers or needs audien
 ### Step 9 — Generate and Run the Migration
 
 ```bash
-# Using the forge CLI (recommended — path is enforced automatically):
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate CreateArticlesTable
-npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
-
-# Or via npm run aliases:
-npm run migration:generate src/infrastructure/database/migrations/CreateArticlesTable
-npm run migration:run
+# Using the forge CLI — path is enforced automatically:
+npx forge db migrate generate CreateArticlesTable
+npx forge db migrate run
 ```
 
 ### Step 10 — Verify
@@ -1826,7 +1633,7 @@ npm run start:dev
 
 ---
 
-## 22. Quality Gates
+## 23. Quality Gates
 
 Two independent checkpoints enforce code health — one local (fast, staged-files-only), one in CI (full project, every PR).
 
@@ -1834,6 +1641,7 @@ Two independent checkpoints enforce code health — one local (fast, staged-file
 
 ```
 npx lint-staged   # Prettier --write + ESLint --fix, staged src/**/*.ts and test/**/*.ts only (.lintstagedrc)
+npm run build     # Nest production build must compile
 npm run knip      # Unused files, exports, and dependencies — full project (knip.json), not just staged files
 ```
 
@@ -1849,20 +1657,20 @@ npm run knip      # Unused files, exports, and dependencies — full project (kn
 ### Rules
 
 - Never bypass these with `--no-verify` or by disabling a script — fix the underlying issue instead.
-- Run `npm run typecheck` locally before pushing; don't rely on CI to be the first place a type error surfaces.
+- Run `npm run typecheck` and `npm run build` locally before pushing; don't rely on CI to be the first place a compile error surfaces.
 - **Handling a knip false positive:** first check whether the file/export is genuinely dead — if so, delete it; don't suppress the finding. Only add an entry to `knip.json`'s ignore config when the symbol is a deliberately-kept public API surface knip can't infer (e.g. exported for an external consumer, referenced dynamically) — and leave a one-line comment at the ignore entry explaining why, so it doesn't read as stale later.
 
-These gates run alongside the module-boundary linting already described in §5 (Automated Enforcement) and the migration discipline in §9 — this section is about *what runs and when*, not a restatement of those rules.
+These gates run alongside the module-boundary linting already described in §5 (Automated Enforcement) and the migration discipline in §9 — this section is about _what runs and when_, not a restatement of those rules.
 
 ---
 
 ## Quick Reference Card
 
 ```
-Adding a module?        Follow the 10-step checklist in Section 21.
+Adding a module?        Follow the 10-step checklist in Section 22.
 New endpoint?           Controller calls service. Zero logic in controller.
-Writing a controller?   Import services/DTOs/decorators from api.ts only.
-Need another service?   Import it from api.ts — services live there, not index.ts.
+Writing a controller?   Import services/DTOs/decorators from public-api.ts only.
+Need another service?   Import it from public-api.ts — services live there, not index.ts.
 Need an entity/event?   Import from index.ts — entities and events live there.
 DB change?              Edit entity → forge db migrate generate <Name> → forge db migrate run.
 Send email/SMS?         Queue it via NotificationService. Never send inline.

@@ -5,9 +5,11 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Admin } from 'src/modules/admin';
-import { AdminService } from 'src/modules/admin/api';
-import { CHECK_OWNERSHIP_KEY } from '../decorators/check-ownership.decorator';
+// Type-only entity shape avoids loading the admin barrel in this guard.
+// eslint-disable-next-line no-restricted-imports
+import type { Admin } from 'src/modules/admin/entities/admin.entity';
+import { AdminService } from 'src/modules/admin/public-api';
+import { CHECK_OWNERSHIP_KEY } from '../constants/check-ownership-key.constant';
 import { AuthenticatedUser } from '../interfaces/user.interface';
 
 @Injectable()

@@ -39,20 +39,20 @@ export class SMSPohService {
       return;
     }
 
-    const key = this.config.get<string>('SMS_POH_API_KEY');
-    const secret = this.config.get<string>('SMS_POH_API_SECRET_KEY');
-    this.apiBase = this.config.get<string>('SMS_POH_BASE_API_URL') || '';
-    this.brand = this.config.get<string>('SMS_POH_API_BRAND') || 'SMSPoh';
-    this.fromName =
-      this.config.get<string>('SMS_POH_API_SENDER_ID') || this.brand;
+    const providerEnabled = this.config.getOrThrow<boolean>('sms.poh.enabled');
+    this.apiBase = this.config.get<string>('sms.poh.baseApiUrl') || '';
+    this.brand = this.config.get<string>('sms.poh.brand') || 'SMSPoh';
+    this.fromName = this.config.get<string>('sms.poh.senderId') || this.brand;
 
+    if (!providerEnabled) {
+      this.enabled = false;
+      this.accessToken = '';
+      return;
+    }
+
+    const key = this.config.get<string>('sms.poh.apiKey');
+    const secret = this.config.get<string>('sms.poh.apiSecretKey');
     if (!key || !secret || !this.apiBase) {
-      const env = this.config.get<string>('NODE_ENV') || 'development';
-      if (env === 'development' || env === 'test') {
-        this.enabled = false;
-        this.accessToken = '';
-        return;
-      }
       throw new InternalServerErrorException(
         'SMS provider configuration missing',
       );

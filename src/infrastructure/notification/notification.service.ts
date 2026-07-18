@@ -5,8 +5,8 @@ import {
   EMAIL_NOTIFICATION_BACKOFF_DELAY_MS,
   EMAIL_NOTIFICATION_JOB_ATTEMPTS,
   EMAIL_NOTIFICATION_QUEUE,
-  EmailJobName,
 } from './constants/notification.constants';
+import { EmailJobName } from './enums/email-job-name.enum';
 import { SendForgotPasswordResetCodePayload } from './interfaces/notification-jobs.interface';
 
 @Injectable()

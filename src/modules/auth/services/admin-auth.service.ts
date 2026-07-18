@@ -6,16 +6,21 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { FileUploadService } from 'src/common/services';
 import { comparePassword } from 'src/common/utils';
 import { buildRequestContext } from 'src/common/utils';
-import { Admin } from 'src/modules/admin';
-import { AdminService } from 'src/modules/admin/api';
-import { AUDIT_LOG_EVENT, AuditLogEvent, LogStatus } from 'src/modules/log';
-import { LogAction } from 'src/modules/log/api';
+// Type-only entity shape avoids loading the admin barrel in auth service exports.
+// eslint-disable-next-line no-restricted-imports
+import type { Admin } from 'src/modules/admin/entities/admin.entity';
+import { AdminService } from 'src/modules/admin/public-api';
+import {
+  diffAuditValues,
+  LogAction,
+  LogQueueService,
+  LogStatus,
+} from 'src/modules/log/public-api';
 import { AdminLoginDto } from '../dto/admin-login.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -33,7 +38,7 @@ export class AdminAuthService {
     private readonly fileUploadService: FileUploadService,
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly logQueueService: LogQueueService,
   ) {}
 
   async validateAdminById(id: string): Promise<Admin | null> {
@@ -79,29 +84,24 @@ export class AdminAuthService {
 
     this.logger.log(`Admin with ID '${admin.id}' logged in successfully`);
 
-    this.eventEmitter.emit(
-      AUDIT_LOG_EVENT,
-      new AuditLogEvent({
-        adminId: admin.id,
-        action: LogAction.LOGIN,
-        description: 'Admin logged in',
-        entityName: 'Admin',
-        entityId: admin.id,
-        status: LogStatus.SUCCESS,
-        ...buildRequestContext(request),
-      }),
-    );
+    await this.logQueueService.enqueueAuditLog({
+      adminId: admin.id,
+      action: LogAction.LOGIN,
+      description: 'Admin logged in',
+      entityName: 'Admin',
+      entityId: admin.id,
+      status: LogStatus.SUCCESS,
+      ...buildRequestContext(request),
+    });
 
     return {
       accessToken,
       refreshToken,
-      accessTokenExpiresAt: this.configService.get<number>(
-        'JWT_EXPIRATION',
-        900000,
+      accessTokenExpiresAt: this.configService.getOrThrow<number>(
+        'jwt.accessTokenTtlSeconds',
       ),
-      refreshTokenExpiresAt: this.configService.get<number>(
-        'JWT_REFRESH_EXPIRATION',
-        2592000000,
+      refreshTokenExpiresAt: this.configService.getOrThrow<number>(
+        'jwt.refreshTokenTtlSeconds',
       ),
       user: { id: admin.id },
     };
@@ -115,17 +115,14 @@ export class AdminAuthService {
     try {
       admin = await this.validateAdmin(loginDto.email, loginDto.password);
     } catch (error) {
-      this.eventEmitter.emit(
-        AUDIT_LOG_EVENT,
-        new AuditLogEvent({
-          adminId: null,
-          action: LogAction.LOGIN,
-          description: 'Admin login failed',
-          entityName: 'Admin',
-          status: LogStatus.FAILURE,
-          ...buildRequestContext(request),
-        }),
-      );
+      await this.logQueueService.enqueueAuditLog({
+        adminId: null,
+        action: LogAction.LOGIN,
+        description: 'Admin login failed',
+        entityName: 'Admin',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
       throw error;
     }
 
@@ -143,84 +140,142 @@ export class AdminAuthService {
   async updateProfile(
     userId: string,
     updateProfileDto: UpdateProfileDto,
-    _request: Request,
+    request: Request,
     file?: Express.Multer.File,
   ): Promise<Admin> {
-    const admin = await this.adminService.findByIdNullable(userId);
+    try {
+      const admin = await this.adminService.findByIdNullable(userId);
 
-    if (!admin) {
-      this.logger.warn(`Admin with ID '${userId}' not found`);
-      throw new NotFoundException(`Admin with ID '${userId}' not found`);
+      if (!admin) {
+        this.logger.warn(`Admin with ID '${userId}' not found`);
+        throw new NotFoundException(`Admin with ID '${userId}' not found`);
+      }
+
+      const dto = updateProfileDto as {
+        profileImageUrl?: string;
+        password?: string;
+        fullName?: string;
+        email?: string;
+      };
+
+      const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+        file,
+        bodyUrl: dto.profileImageUrl,
+        existingUrl: admin.profileImageKey || '',
+        path: 'admins/profile',
+      });
+
+      const updatedAdmin = await this.adminService.preloadEntity({
+        id: userId,
+        fullName: dto.fullName ?? admin.fullName,
+        email: dto.email ?? admin.email,
+        profileImageKey: newProfileImageUrl,
+      });
+
+      if (!updatedAdmin) {
+        throw new NotFoundException(`Admin with ID '${userId}' not found`);
+      }
+
+      if (dto.password) updatedAdmin.password = dto.password;
+
+      const savedAdmin = await this.adminService.saveEntity(updatedAdmin);
+
+      const { oldValue, newValue } = diffAuditValues(admin, savedAdmin, [
+        'fullName',
+        'email',
+        'profileImageKey',
+        'password',
+      ]);
+
+      await this.fileUploadService.replace(
+        newProfileImageUrl,
+        admin.profileImageKey || '',
+      );
+
+      this.logger.log(
+        `Admin with ID '${admin.id}' profile updated successfully`,
+      );
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId: userId,
+        action: LogAction.UPDATE_PROFILE,
+        description: 'Profile updated',
+        entityName: 'Auth',
+        entityId: userId,
+        oldValue,
+        newValue,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return savedAdmin;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId: userId,
+        action: LogAction.UPDATE_PROFILE,
+        description: 'Profile update failed',
+        entityName: 'Auth',
+        entityId: userId,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    const dto = updateProfileDto as {
-      profileImageUrl?: string;
-      password?: string;
-      fullName?: string;
-      email?: string;
-    };
-
-    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
-      file,
-      bodyUrl: dto.profileImageUrl,
-      existingUrl: admin.profileImageKey || '',
-      path: 'admins/profile',
-    });
-
-    const updatedAdmin = await this.adminService.preloadEntity({
-      id: userId,
-      fullName: dto.fullName ?? admin.fullName,
-      email: dto.email ?? admin.email,
-      profileImageKey: newProfileImageUrl,
-    });
-
-    if (!updatedAdmin) {
-      throw new NotFoundException(`Admin with ID '${userId}' not found`);
-    }
-
-    if (dto.password) updatedAdmin.password = dto.password;
-
-    const savedAdmin = await this.adminService.saveEntity(updatedAdmin);
-
-    await this.fileUploadService.replace(
-      newProfileImageUrl,
-      admin.profileImageKey || '',
-    );
-
-    this.logger.log(`Admin with ID '${admin.id}' profile updated successfully`);
-    return savedAdmin;
   }
 
   async changePassword(
     userId: string,
     dto: ChangePasswordDto,
-    _request: Request,
+    request: Request,
   ): Promise<void> {
-    const admin = await this.adminService.findByIdWithPassword(userId);
+    try {
+      const admin = await this.adminService.findByIdWithPassword(userId);
 
-    if (!admin) {
-      this.logger.warn(`Admin with ID '${userId}' not found`);
-      throw new NotFoundException(`Admin with ID '${userId}' not found`);
-    }
+      if (!admin) {
+        this.logger.warn(`Admin with ID '${userId}' not found`);
+        throw new NotFoundException(`Admin with ID '${userId}' not found`);
+      }
 
-    const isCurrentPasswordValid = await comparePassword(
-      dto.currentPassword,
-      admin.password,
-    );
-
-    if (!isCurrentPasswordValid) {
-      this.logger.warn(
-        `Admin with ID '${userId}' provided incorrect current password`,
+      const isCurrentPasswordValid = await comparePassword(
+        dto.currentPassword,
+        admin.password,
       );
-      throw new BadRequestException('Incorrect current password');
+
+      if (!isCurrentPasswordValid) {
+        this.logger.warn(
+          `Admin with ID '${userId}' provided incorrect current password`,
+        );
+        throw new BadRequestException('Incorrect current password');
+      }
+
+      admin.password = dto.newPassword;
+      await this.adminService.saveEntity(admin);
+      await this.tokenService.revokeAllAdminTokens(userId);
+
+      this.logger.log(
+        `Admin with ID '${admin.id}' password changed successfully`,
+      );
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId: userId,
+        action: LogAction.CHANGE_PASSWORD,
+        description: 'Password changed',
+        entityName: 'Auth',
+        entityId: userId,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId: userId,
+        action: LogAction.CHANGE_PASSWORD,
+        description: 'Password change failed',
+        entityName: 'Auth',
+        entityId: userId,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    admin.password = dto.newPassword;
-    await this.adminService.saveEntity(admin);
-    await this.tokenService.revokeAllAdminTokens(userId);
-
-    this.logger.log(
-      `Admin with ID '${admin.id}' password changed successfully`,
-    );
   }
 }

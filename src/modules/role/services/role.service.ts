@@ -6,8 +6,14 @@ import {
 } from '@nestjs/common';
 import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
-import { resolveSortField } from 'src/common/utils';
-import { attachAuditLogMetadata, diffAuditValues } from 'src/modules/log/api';
+import { Request } from 'express';
+import { buildRequestContext, resolveSortField } from 'src/common/utils';
+import {
+  diffAuditValues,
+  LogAction,
+  LogQueueService,
+  LogStatus,
+} from 'src/modules/log/public-api';
 import { In } from 'typeorm';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { FilterRoleDto } from '../dto/filter-role.dto';
@@ -24,6 +30,7 @@ export class RoleService {
 
   constructor(
     private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
+    private readonly logQueueService: LogQueueService,
   ) {}
 
   async findAll(
@@ -84,8 +91,48 @@ export class RoleService {
     });
   }
 
+  /**
+   * Public entrypoint for role creation. The audit-log enqueue happens here,
+   * outside the `@Transactional()` boundary of `createInTransaction`, so it
+   * only fires once the transaction has actually committed (this method's
+   * await only resolves after commit succeeds).
+   */
+  async create(
+    createRoleDto: CreateRoleDto,
+    adminId: string,
+    request: Request,
+  ): Promise<Role | null> {
+    try {
+      const role = await this.createInTransaction(createRoleDto);
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.CREATE,
+        description: 'Admin created a role',
+        entityName: 'Role',
+        entityId: role?.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return role;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.CREATE,
+        description: 'Role creation failed',
+        entityName: 'Role',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
+    }
+  }
+
   @Transactional()
-  async create(createRoleDto: CreateRoleDto): Promise<Role | null> {
+  private async createInTransaction(
+    createRoleDto: CreateRoleDto,
+  ): Promise<Role | null> {
     const existingRole = await this.txHost.tx.getRepository(Role).findOne({
       where: { name: createRoleDto.name },
     });
@@ -124,8 +171,59 @@ export class RoleService {
     });
   }
 
+  /**
+   * Public entrypoint for role updates — same commit-before-enqueue guarantee
+   * as `create` above.
+   */
+  async update(
+    id: string,
+    updateRoleDto: UpdateRoleDto,
+    adminId: string,
+    request: Request,
+  ): Promise<Role | null> {
+    try {
+      const result = await this.updateInTransaction(id, updateRoleDto);
+
+      if (!result) {
+        return null;
+      }
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Admin updated a role',
+        entityName: 'Role',
+        entityId: id,
+        oldValue: result.oldValue,
+        newValue: result.newValue,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return result.updatedRole;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.UPDATE,
+        description: 'Role update failed',
+        entityName: 'Role',
+        entityId: id,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
+    }
+  }
+
   @Transactional()
-  async update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role | null> {
+  private async updateInTransaction(
+    id: string,
+    updateRoleDto: UpdateRoleDto,
+  ): Promise<{
+    updatedRole: Role;
+    oldValue: Record<string, unknown>;
+    newValue: Record<string, unknown>;
+  } | null> {
     const role = await this.findOne(id);
 
     if (!role) {
@@ -181,29 +279,62 @@ export class RoleService {
       ],
     });
 
-    if (updatedRole) {
-      const trackedFields = Object.keys(updateRoleDto).filter(
-        (k) => k !== 'permissionIds',
-      );
-      attachAuditLogMetadata(
-        updatedRole,
-        diffAuditValues(role, updatedRole, trackedFields),
-      );
+    if (!updatedRole) {
+      return null;
     }
 
-    return updatedRole;
+    const trackedFields = Object.keys(updateRoleDto).filter(
+      (k) => k !== 'permissionIds',
+    );
+    const { oldValue, newValue } = diffAuditValues(
+      role,
+      updatedRole,
+      trackedFields,
+    );
+
+    return { updatedRole, oldValue, newValue };
   }
 
-  async remove(id: string): Promise<boolean> {
-    const role = await this.findOne(id);
+  async remove(
+    id: string,
+    adminId: string,
+    request: Request,
+  ): Promise<boolean> {
+    try {
+      const role = await this.findOne(id);
 
-    if (!role) {
-      return false;
+      if (!role) {
+        return false;
+      }
+
+      await this.txHost.tx.getRepository(Role).softDelete(id);
+      this.logger.log(
+        `Role with ID '${id}' has been successfully soft deleted`,
+      );
+
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.DELETE,
+        description: 'Admin deleted a role',
+        entityName: 'Role',
+        entityId: id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      });
+
+      return true;
+    } catch (error) {
+      await this.logQueueService.enqueueAuditLog({
+        adminId,
+        action: LogAction.DELETE,
+        description: 'Role deletion failed',
+        entityName: 'Role',
+        entityId: id,
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      });
+      throw error;
     }
-
-    await this.txHost.tx.getRepository(Role).softDelete(id);
-    this.logger.log(`Role with ID '${id}' has been successfully soft deleted`);
-    return true;
   }
 
   private async validatePermissionIds(permissionIds: string[]): Promise<void> {

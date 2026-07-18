@@ -2,10 +2,8 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { EmailService } from 'src/common/services';
-import {
-  EMAIL_NOTIFICATION_QUEUE,
-  EmailJobName,
-} from '../constants/notification.constants';
+import { EMAIL_NOTIFICATION_QUEUE } from '../constants/notification.constants';
+import { EmailJobName } from '../enums/email-job-name.enum';
 import { SendForgotPasswordResetCodePayload } from '../interfaces/notification-jobs.interface';
 
 @Injectable()

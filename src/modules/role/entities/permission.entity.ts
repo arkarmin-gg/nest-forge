@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { ModuleEntity } from './module.entity';
 import { RolePermission } from './role-permission.entity';
-import { ActionType } from '../constants/action-type.enum';
+import { ActionType } from '../enums/action-type.enum';
 
 @Entity('permissions')
 @Index('UQ_permissions_module_action_active', ['moduleId', 'action'], {

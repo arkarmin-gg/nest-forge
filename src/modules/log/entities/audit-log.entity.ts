@@ -8,8 +8,8 @@ import {
   Index,
 } from 'typeorm';
 import { Admin } from 'src/modules/admin/entities/admin.entity';
-import { LogAction } from '../constants/log-action.enum';
-import { LogStatus } from '../constants/log-status.enum';
+import { LogAction } from '../enums/log-action.enum';
+import { LogStatus } from '../enums/log-status.enum';
 
 @Entity('audit_logs')
 @Index(['adminId', 'action', 'createdAt'])

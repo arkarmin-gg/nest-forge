@@ -3,5 +3,5 @@ export { FilterUserDto } from './dto/filter-user.dto';
 export { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 export { UpdateUserDto } from './dto/update-user.dto';
 export { UserAppResponseDto } from './dto/user-app-response.dto';
-export { LoginProvider } from './constants/login-provider.enum';
+export { LoginProvider } from './enums/login-provider.enum';
 export { UserService } from './services/user.service';

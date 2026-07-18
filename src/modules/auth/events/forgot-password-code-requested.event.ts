@@ -1,5 +1,3 @@
-export const FORGOT_PASSWORD_CODE_REQUESTED = 'forgot-password.code.requested';
-
 export class ForgotPasswordCodeRequestedEvent {
   constructor(
     public readonly email: string,

@@ -5,12 +5,12 @@ import {
   AuditLogService,
   FilterActivityLogDto,
   FilterAuditLogDto,
-} from 'src/modules/log/api';
+} from 'src/modules/log/public-api';
 import {
   PermissionModule,
   PermissionsGuard,
   RequirePermissions,
-} from 'src/modules/role/api';
+} from 'src/modules/role/public-api';
 
 @Controller({ path: 'admin', version: '1' })
 @UseGuards(PermissionsGuard)

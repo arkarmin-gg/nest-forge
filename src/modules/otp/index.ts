@@ -1,1 +1,2 @@
-export { OtpPurpose } from './constants/otp-purpose.enum';
+export { OtpModule } from './otp.module';
+export { OtpPurpose } from './enums/otp-purpose.enum';

@@ -4,9 +4,17 @@
 
 Accepted
 
+## Current implementation note
+
+This ADR was written before the base classes were split. Current code keeps
+UUID/timestamps on `BaseEntity` and implements soft delete on
+`SoftDeletableEntity extends BaseEntity`. The partial-unique-index decision is
+unchanged: any soft-deletable entity with an active-row uniqueness rule uses a
+partial unique index with `WHERE "deleted_at" IS NULL`.
+
 ## Context
 
-Soft delete is implemented once, on `BaseEntity`, via TypeORM's `@DeleteDateColumn()` (`deletedAt`). Every domain entity that extends `BaseEntity` — `User`, `Admin`, `Role`, `Permission`, `ModuleEntity`, `Setting` — inherits it. TypeORM **auto-excludes** soft-deleted rows from reads (`find`, query builder, the existence pre-checks in the create/register flows), so a deleted record is invisible to the application.
+Soft delete was originally implemented once, on `BaseEntity`, via TypeORM's `@DeleteDateColumn()` (`deletedAt`). Current soft-deletable domain entities — `User`, `Admin`, `Role`, `Permission`, `ModuleEntity`, `Setting` — now inherit it through `SoftDeletableEntity`. TypeORM **auto-excludes** soft-deleted rows from reads (`find`, query builder, the existence pre-checks in the create/register flows), so a deleted record is invisible to the application.
 
 The database, however, enforced **unconditional** UNIQUE constraints on the identifying columns (`User.phone/googleId/appleId`, `Admin.email`, `Role.name`, `ModuleEntity.code`, `Setting.key`, `Permission(moduleId, action)`). Those constraints still count soft-deleted rows.
 
@@ -21,9 +29,9 @@ The application's intent (a deleted record is gone) and the database's enforceme
 
 ## Decision
 
-Scope uniqueness to **active (non-deleted) rows**: replace each unconditional UNIQUE constraint with a Postgres **partial unique index** carrying `WHERE "deletedAt" IS NULL`, on every soft-deletable entity.
+Scope uniqueness to **active (non-deleted) rows**: replace each unconditional UNIQUE constraint with a Postgres **partial unique index** carrying `WHERE "deleted_at" IS NULL`, on every soft-deletable entity.
 
-The indexes are declared on the entities (named class-level `@Index(..., { unique: true, where: '"deletedAt" IS NULL' })`) so TypeORM stays in sync and `migration:generate` does not re-introduce the old constraints, and applied to the database by migration `PartialUniqueSoftDelete1781200000000`.
+The indexes are declared on the entities (named class-level `@Index(..., { unique: true, where: '"deleted_at" IS NULL' })`) so TypeORM stays in sync and migration generation does not re-introduce the old constraints.
 
 No service logic changed:
 
@@ -47,5 +55,5 @@ No service logic changed:
 **Costs / caveats:**
 
 - If a **restore/recover** feature is added later, it must handle the case where a deleted row's unique value has since been claimed by an active row — undeleting it would violate the partial index. Restore is not implemented today, so this is deferred, not solved.
-- Multiple soft-deleted rows may now share the same value (intended). Any future reporting that assumes uniqueness across *all* rows (including deleted) must use the row id, not the natural key.
+- Multiple soft-deleted rows may now share the same value (intended). Any future reporting that assumes uniqueness across _all_ rows (including deleted) must use the row id, not the natural key.
 - The `down()` migration restores the original unconditional constraints; reverting will fail if duplicate values exist among non-deleted-plus-deleted rows at that time.

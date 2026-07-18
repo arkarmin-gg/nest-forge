@@ -1,2 +1,2 @@
-export * from './base.entity';
-export * from './soft-deletable.entity';
+export { BaseEntity } from './base.entity';
+export { SoftDeletableEntity } from './soft-deletable.entity';

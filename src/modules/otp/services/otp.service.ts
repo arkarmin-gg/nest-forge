@@ -4,8 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { addMinutes, isExpired, OTP_TTL_MINUTES } from 'src/common/utils';
 import { sha256Hex } from 'src/common/utils';
 import { Brackets, In, LessThan, Repository } from 'typeorm';
-import { OtpPurpose } from '../constants/otp-purpose.enum';
-import { OtpStatus } from '../constants/otp-status.enum';
+import { OtpPurpose } from '../enums/otp-purpose.enum';
+import { OtpStatus } from '../enums/otp-status.enum';
 import { OtpRecord } from '../entities/otp-record.entity';
 
 @Injectable()

@@ -9,26 +9,28 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
 import { ResolvePresignedUrls } from 'src/common/decorators';
 import { imageInterceptorOptions } from 'src/common/config';
-import { LogAction, LogActivity } from 'src/modules/log/api';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth/public-api';
 import {
   PermissionModule,
   PermissionsGuard,
   RequirePermissions,
-} from 'src/modules/role/api';
+} from 'src/modules/role/public-api';
 import {
   CreateUserDto,
   FilterUserDto,
   LoginProvider,
   UpdateUserDto,
   UserService,
-} from 'src/modules/user/api';
+} from 'src/modules/user/public-api';
 
 @Controller({ path: 'admin/users', version: '1' })
 @UseGuards(PermissionsGuard)
@@ -36,11 +38,6 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
-  @LogActivity({
-    action: LogAction.CREATE,
-    description: 'Admin created a user',
-    resourceType: 'User',
-  })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'create' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'create' },
@@ -49,10 +46,14 @@ export class UserController {
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() createUserDto: CreateUserDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
   ) {
     return this.userService.create(
       { ...createUserDto, loginProvider: LoginProvider.SMS },
       file,
+      admin.id,
+      request,
     );
   }
 
@@ -77,11 +78,6 @@ export class UserController {
   }
 
   @Patch(':id')
-  @LogActivity({
-    action: LogAction.UPDATE,
-    description: 'Admin updated a user',
-    resourceType: 'User',
-  })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'update' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'update' },
@@ -91,22 +87,29 @@ export class UserController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
   ) {
-    return this.userService.update(id, updateUserDto, file);
+    return this.userService.update(
+      id,
+      updateUserDto,
+      file,
+      { id: admin.id, subjectType: 'ADMIN' },
+      request,
+    );
   }
 
   @Delete(':id')
   @HttpCode(200)
-  @LogActivity({
-    action: LogAction.DELETE,
-    description: 'Admin deleted a user',
-    resourceType: 'User',
-  })
   @RequirePermissions(
     { module: PermissionModule.APPLICATION_USER, permission: 'delete' },
     { module: PermissionModule.APPLICATION_USER_LIST, permission: 'delete' },
   )
-  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    await this.userService.remove(id);
+  async remove(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    await this.userService.remove(id, admin.id, request);
   }
 }

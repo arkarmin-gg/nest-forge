@@ -5,8 +5,9 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from 'src/api/v1/auth/auth.controller';
 import { AdminModule } from 'src/modules/admin/admin.module';
-import { OtpModule } from 'src/modules/otp/otp.module';
-import { UserModule } from 'src/modules/user/user.module';
+import { ActivityLogModule } from 'src/modules/log';
+import { OtpModule } from 'src/modules/otp';
+import { UserModule } from 'src/modules/user';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ResourceOwnershipGuard } from './guards/resource-ownership.guard';
@@ -23,16 +24,18 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   imports: [
     UserModule,
     AdminModule,
+    ActivityLogModule,
     TypeOrmModule.forFeature([RefreshToken]),
     OtpModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: configService.getOrThrow<string>('jwt.secret'),
         signOptions: {
-          // Default: 15 minutes (900000ms). Override via JWT_EXPIRATION env var.
-          expiresIn: configService.get<number>('JWT_EXPIRATION', 900000),
+          expiresIn: configService.getOrThrow<number>(
+            'jwt.accessTokenTtlSeconds',
+          ),
         },
       }),
       inject: [ConfigService],

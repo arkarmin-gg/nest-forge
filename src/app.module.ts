@@ -4,7 +4,7 @@ import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-t
 import { CacheModule } from '@nestjs/cache-manager';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -16,14 +16,25 @@ import { HealthModule } from 'src/infrastructure/health/health.module';
 import { NotificationModule } from 'src/infrastructure/notification/notification.module';
 import { AdminModule } from 'src/modules/admin/admin.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
-import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
-import { ActivityLogModule } from 'src/modules/log/activity-log.module';
-import { ActivityLogInterceptor } from 'src/modules/log/interceptors/activity-log.interceptor';
-import { SettingModule } from 'src/modules/setting/setting.module';
-import { UserModule } from 'src/modules/user/user.module';
+import { JwtAuthGuard } from 'src/modules/auth';
+import { ActivityLogModule } from 'src/modules/log';
+import { SettingModule } from 'src/modules/setting';
+import { UserModule } from 'src/modules/user';
 import { CommonModule } from './common/common.module';
-import { envValidationSchema } from './common/config/env.validation';
-import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import {
+  appConfig,
+  authConfig,
+  corsConfig,
+  databaseConfig,
+  jwtConfig,
+  otpConfig,
+  redisConfig,
+  s3Config,
+  seedConfig,
+  smsConfig,
+  validateEnv,
+} from './common/config';
+import { RequestIdMiddleware } from './common/middleware';
 import dataSource from './data-source';
 
 @Module({
@@ -42,18 +53,28 @@ import dataSource from './data-source';
     }),
     ConfigModule.forRoot({
       isGlobal: true,
-      validationSchema: envValidationSchema,
-      validationOptions: {
-        abortEarly: false,
-      },
+      load: [
+        appConfig,
+        authConfig,
+        corsConfig,
+        databaseConfig,
+        jwtConfig,
+        otpConfig,
+        redisConfig,
+        s3Config,
+        seedConfig,
+        smsConfig,
+      ],
+      validate: validateEnv,
+      validatePredefined: false,
     }),
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         stores: [
           createKeyv({
-            url: `redis://${configService.get('REDIS_HOST', 'localhost')}:${configService.get('REDIS_PORT', 6379)}`,
+            url: `redis://${configService.getOrThrow<string>('redis.host')}:${configService.getOrThrow<number>('redis.port')}`,
           }),
         ],
         ttl: 600 * 1000,
@@ -84,10 +105,6 @@ import dataSource from './data-source';
   ],
   controllers: [],
   providers: [
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: ActivityLogInterceptor,
-    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

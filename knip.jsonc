@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "entry": [
+    "src/main.ts",
+    "src/data-source.ts",
+    // Launched by `forge db seed`; Knip cannot infer this through child_process.
+    "src/seeders/seed.ts",
+    // Launched by `forge db clear/reset`; Knip cannot infer this through child_process.
+    "src/seeders/clear.ts",
+    // Loaded dynamically by TypeORM from `src/data-source.ts`.
+    "src/infrastructure/database/migrations/*.ts",
+    // E2E tests live outside the package.json Jest rootDir.
+    "test/**/*.ts",
+  ],
+  "project": ["src/**/*.ts", "cli/**/*.ts", "test/**/*.ts"],
+  "tags": ["-lintignore"],
+  "treatConfigHintsAsErrors": true,
+}

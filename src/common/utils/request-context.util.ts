@@ -1,6 +1,6 @@
 import { Request } from 'express';
+import type { CreateActivityLogData } from 'src/modules/log/public-api';
 import { parseUserAgent } from './user-agent.util';
-import { CreateActivityLogData } from 'src/modules/log/interfaces/create-activity-log.interface';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers['x-forwarded-for'] as string;

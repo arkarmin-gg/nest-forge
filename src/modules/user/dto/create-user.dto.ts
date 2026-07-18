@@ -8,7 +8,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsPassword } from 'src/common/validators';
-import { LoginProvider } from '../constants/login-provider.enum';
+import { LoginProvider } from '../enums/login-provider.enum';
 import { ToBoolean } from 'src/common/decorators';
 
 export class CreateUserDto {
