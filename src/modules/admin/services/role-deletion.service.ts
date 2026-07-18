@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { RoleService } from 'src/modules/role/api';
+import { RoleService } from 'src/modules/role/public-api';
 import { AdminService } from './admin.service';
 
 /**

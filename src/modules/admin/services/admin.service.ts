@@ -18,8 +18,8 @@ import {
   LogAction,
   LogQueueService,
   LogStatus,
-} from 'src/modules/log/api';
-import { RoleService } from 'src/modules/role/api';
+} from 'src/modules/log/public-api';
+import { RoleService } from 'src/modules/role/public-api';
 import { DeepPartial, Repository } from 'typeorm';
 import { CreateAdminDto } from '../dto/create-admin.dto';
 import { FilterAdminDto } from '../dto/filter-admin.dto';

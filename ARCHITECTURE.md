@@ -124,7 +124,7 @@ nest-forge/
 │   │   │   ├── services/
 │   │   │   ├── strategies/
 │   │   │   ├── auth.module.ts
-│   │   │   └── index.ts             # Public API barrel — always import from here
+│   │   │   └── index.ts             # Domain public barrel — module wiring/types
 │   │   ├── user/
 │   │   │   ├── dto/
 │   │   │   ├── entities/
@@ -146,7 +146,7 @@ nest-forge/
 │   ├── common/                      ← Shared Cross-Cutting Concerns
 │   │   ├── config/                  # Env validation, logger config, upload (Multer) config
 │   │   ├── decorators/              # @RequestTimeout, @ResolvePresignedUrls
-│   │   ├── dto/                     # PaginationFilterDto
+│   │   ├── dto/                     # PaginationFilterDto, SortableFilterDto
 │   │   ├── entities/                # BaseEntity, SoftDeletableEntity
 │   │   ├── filters/                 # Exception filters
 │   │   ├── interceptors/            # Response, Timeout, PresignedUrl
@@ -245,15 +245,16 @@ Each module contains:
 - `interfaces/` — Exported, reusable domain interfaces, one per file (see below)
 - `constants/` — Exported primitive constants — Reflector metadata keys, event-name strings, config values — one per file (see below)
 - `index.ts` — Module wiring and domain types (module class, entities, events)
-- `api.ts` — Services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
+- `public-api.ts` — Callable public application surface: services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
 
 **Rules:**
 
 - A module **only accesses its own entities**
 - To use another module's data, call that module's **exported service**
-- Always expose both `index.ts` and `api.ts` barrels — no symbol appears in both
-- Controllers always import from `api.ts` — services, DTOs, and route decorators live there
-- Domain services import services from `api.ts`; entities and events from `index.ts`
+- Always expose both `index.ts` and `public-api.ts` barrels — no symbol appears in both
+- Controllers always import from `public-api.ts` — services, DTOs, and route decorators live there
+- Domain services import services from `public-api.ts`; entities and events from `index.ts`
+- Barrels are architectural boundary contracts only, never convenience aggregators
 
 #### `enums/`, `interfaces/`, `constants/` — One Concern Per Folder
 
@@ -278,7 +279,7 @@ modules/log/
 - `interfaces/*.interface.ts` — **exported** interfaces meant to be imported elsewhere (a guard, a DTO, another service). A file-private, non-exported interface that shapes a single function's options or a seeder's local config (e.g. `RoleConfig` in `role.seeder.ts`) stays right where it's declared — moving it would only be relocation for its own sake, since nothing outside that file could ever import it.
 - `constants/*.constant.ts` — exported primitive constants: `SetMetadata` Reflector keys (`PERMISSIONS_KEY`), queue names (`LOG_QUEUE`, `EMAIL_NOTIFICATION_QUEUE`), and standalone config values (job retry counts, backoff delays). Even though a constant is only ever read by one queue registration, it still gets its own file here rather than staying inline — this keeps the "what enums/interfaces/constants does this module define" question answerable by listing three folders, not by reading every service and processor file.
 
-**Barrels:** none of these three folders gets its own `index.ts`. Import by direct file path (`from '../enums/log-status.enum'`) — the module-root `index.ts`/`api.ts` remains the only real barrel boundary (per the two-barrel rule above). A module only gets the folders it needs — no empty `enums/` in a module with no enums.
+**Barrels:** none of these three folders gets its own `index.ts`. Import by direct file path (`from '../enums/log-status.enum'`) — the module-root `index.ts`/`public-api.ts` remains the only real barrel boundary (per the two-barrel rule above). A module only gets the folders it needs — no empty `enums/` in a module with no enums.
 
 ### Zone 3: `infrastructure/` — Technical Layer
 
@@ -293,6 +294,8 @@ Includes: filters, interceptors, base entities, shared DTOs, utility functions.
 **Conventions:**
 
 - Every subfolder exports through its own `index.ts` barrel. Import from the barrel (`src/common/utils`), never from a file inside it — this keeps future renames/moves inside `common/` a one-line barrel change instead of a repo-wide find/replace.
+- Do not add a single `src/common/index.ts` mega-barrel. Keep imports scoped to the relevant common subfolder.
+- Common subfolder barrels follow the same hygiene rules as module barrels: named exports only, `export type` for types, and no side effects.
 - `utils/` holds stateless pure functions only, named `*.util.ts` (e.g. `date-time.util.ts`, `s3-url.util.ts`).
 - `services/` holds `@Injectable()` classes, named `*.service.ts` (e.g. `s3-client.service.ts`, `email.service.ts`). If it has external dependencies (DB, S3, SMTP, external APIs) or DI-injected state, it's a service, not a util.
 - Config objects/schemas (Multer options, env validation, logger setup) go in `config/`, named `*.config.ts`.
@@ -315,18 +318,18 @@ modules/
     ├── services/
     │   └── article.service.ts
     ├── article.module.ts
-    ├── index.ts                     ← Full domain public API (for other modules)
-    └── api.ts                       ← HTTP surface (for controllers only)
+    ├── index.ts                     ← Domain public API (module wiring/types)
+    └── public-api.ts                       ← Callable public application surface
 ```
 
-### `index.ts` vs `api.ts` — Two Barrels, Two Audiences
+### `index.ts` vs `public-api.ts` — Two Barrels, Two Audiences
 
-Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home.
+Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `public-api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home. These barrels are architectural boundary contracts, not shortcuts for avoiding relative paths inside a module (see ADR-0013).
 
-|                   | `index.ts`                                                                  | `api.ts`                                            |
+|                   | `index.ts`                                                                  | `public-api.ts`                                            |
 | ----------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
-| **Used by**       | Other domain modules, `app.module.ts`                                       | Controllers in `src/api/v1/` only                   |
-| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | DTOs, services, decorators for routes               |
+| **Used by**       | Other domain modules, `app.module.ts`                                       | Controllers in `src/api/v1/`; domain services calling another module's public service |
+| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | Services, DTOs, decorators for routes, controller-facing types |
 | **Never exports** | DTOs, route decorators, route guards                                        | Module class, entities, events, internal interfaces |
 
 **`index.ts` — Module wiring and domain types**
@@ -336,14 +339,14 @@ Every module exposes two barrel files with a **strict no-overlap rule**: if a sy
 export { ArticleModule } from './article.module'; // ← module class, for app.module.ts
 export { Article } from './entities/article.entity'; // ← entity, for domain services that need the type
 export { ArticleCreatedEvent } from './events/article-created.event'; // ← events
-// No ArticleService — services live in api.ts
-// No DTOs — DTOs live in api.ts
+// No ArticleService — services live in public-api.ts
+// No DTOs — DTOs live in public-api.ts
 ```
 
-**`api.ts` — Services, DTOs, and route decorators**
+**`public-api.ts` — Services, DTOs, and route decorators**
 
 ```typescript
-// modules/article/api.ts
+// modules/article/public-api.ts
 export { ArticleService } from './services/article.service'; // ← service, for both controllers and domain services
 export { CreateArticleDto } from './dto/create-article.dto';
 export { UpdateArticleDto } from './dto/update-article.dto';
@@ -356,13 +359,18 @@ export { FilterArticleDto } from './dto/filter-article.dto';
 **Import rules:**
 
 ```typescript
-// ✅ Controller importing — always use api.ts
+// ✅ Controller importing — always use public-api.ts
 // src/api/v1/article/article.controller.ts
-import { ArticleService, CreateArticleDto } from 'src/modules/article/api';
+import { ArticleService, CreateArticleDto } from 'src/modules/article/public-api';
 
-// ✅ Domain service calling another module's service — use api.ts (services live there)
+// ✅ Domain service calling another module's service — use public-api.ts (services live there)
 // src/modules/workflow/services/workflow.service.ts
-import { ArticleService } from 'src/modules/article/api';
+import { ArticleService } from 'src/modules/article/public-api';
+
+// ✅ Own-module code uses relative direct imports — never its own barrel
+// src/modules/article/services/article.service.ts
+import { Article } from '../entities/article.entity';
+import { CreateArticleDto } from '../dto/create-article.dto';
 
 // ✅ Domain service needing an entity type or event — use index.ts
 // src/modules/workflow/services/workflow.service.ts
@@ -381,12 +389,42 @@ import { ArticleService } from 'src/modules/article';
 
 The no-overlap rule means every symbol has exactly one canonical import path. There is no need to guess which barrel to check.
 
+### Barrel Hygiene Rules
+
+Barrels must stay boring. They are public export manifests only:
+
+```typescript
+// ✅ CORRECT — named, side-effect-free, type-only where possible
+export { ArticleService } from './services/article.service';
+export { CreateArticleDto } from './dto/create-article.dto';
+export type { ArticleListItem } from './interfaces/article-list-item.interface';
+
+// ❌ WRONG — wildcard exports leak internals and hide API growth
+export * from './services/article.service';
+
+// ❌ WRONG — barrels never run code
+initializeArticleMetadata();
+```
+
+Rules:
+
+- No `export *` from `index.ts`, `public-api.ts`, or `common/*/index.ts`
+- Use `export type` for type-only exports
+- No runtime initialization, logging, metadata setup, or other side effects
+- Code inside a module imports its own files with relative direct paths, not `src/modules/<same-module>` or `src/modules/<same-module>/public-api`
+- Controllers import from `public-api.ts` only; if a controller needs a decorator/type, that symbol belongs in `public-api.ts`
+- Domain services may import another module's service from `public-api.ts`, but should not reuse HTTP DTOs unless that DTO is intentionally a cross-module service contract
+- Entity relation files (`*.entity.ts`) may direct-import other entity files for TypeORM relationship wiring
+- Seeder, data-source, and migration code may direct-import concrete entities and seeder classes as low-level database code
+
 ### Automated Enforcement (ESLint)
 
 These boundaries are enforced mechanically by `eslint.config.mjs`, so `npm run lint` fails on a violation:
 
-- **`no-restricted-imports`** blocks deep imports into a module's internals (e.g. `src/modules/auth/services/token.service`) — you must import through the `index.ts` / `api.ts` barrel. `*.entity.ts` files are exempt, since TypeORM relations legitimately reach across module internals.
+- **`no-restricted-imports`** blocks deep imports into a module's internals (e.g. `src/modules/auth/services/token.service`) — you must import through the `index.ts` / `public-api.ts` barrel. `*.entity.ts` files are exempt, since TypeORM relations legitimately reach across module internals.
 - **`import-x/no-cycle`** (error) rejects circular import dependencies between files. Entity files are exempt because bidirectional TypeORM relations (e.g. `User` ↔ `RefreshToken`) form intentional, lazily-resolved cycles.
+
+Follow-up mechanical checks should also reject wildcard barrel exports, own-module self-imports through root barrels, and overlap between `index.ts` and `public-api.ts`.
 
 An architecture violation surfaces as a lint error, not a runtime surprise.
 
@@ -585,7 +623,7 @@ Client sends: Authorization: Bearer <accessToken>
 ### Getting the Current User in a Controller
 
 ```typescript
-import { CurrentUser, AuthenticatedUser } from 'src/modules/auth/api';
+import { CurrentUser, AuthenticatedUser } from 'src/modules/auth/public-api';
 
 @Get('profile')
 getProfile(@CurrentUser() user: AuthenticatedUser) {
@@ -596,7 +634,7 @@ getProfile(@CurrentUser() user: AuthenticatedUser) {
 ### Making an Endpoint Public
 
 ```typescript
-import { Public } from 'src/modules/auth/api';
+import { Public } from 'src/modules/auth/public-api';
 
 @Get('status')
 @Public()
@@ -607,12 +645,12 @@ getStatus() {
 
 ### Role-Based Access Control
 
-Authorization decorators live in the **role** module. `RequireRoles` + `RolesGuard` are exposed on `src/modules/role`; `RequirePermissions` + `PermissionsGuard` + `PermissionModule` on `src/modules/role/api`. Neither guard is global — apply it with `@UseGuards(...)` (commonly at the controller class level), then annotate the handler.
+Authorization decorators live in the **role** module. `RequireRoles` + `RolesGuard` are exposed on `src/modules/role`; `RequirePermissions` + `PermissionsGuard` + `PermissionModule` on `src/modules/role/public-api`. Neither guard is global — apply it with `@UseGuards(...)` (commonly at the controller class level), then annotate the handler.
 
 ```typescript
 import { UseGuards } from '@nestjs/common';
 import { RequireRoles, RolesGuard } from 'src/modules/role';
-import { RequirePermissions, PermissionsGuard, PermissionModule } from 'src/modules/role/api';
+import { RequirePermissions, PermissionsGuard, PermissionModule } from 'src/modules/role/public-api';
 
 // Coarse: only admins whose role is 'superadmin' or 'editor'
 @UseGuards(RolesGuard)
@@ -654,7 +692,7 @@ import {
   SubjectGuard,
   CurrentUser,
   AuthenticatedUser,
-} from 'src/modules/auth/api';
+} from 'src/modules/auth/public-api';
 
 @Controller({ path: 'app/me', version: '1' })
 @UseGuards(SubjectGuard)
@@ -891,7 +929,7 @@ There is no interceptor and no `@LogActivity` decorator. Every log write is an e
 
 ```typescript
 import { buildRequestContext } from 'src/common/utils';
-import { LogAction, LogQueueService, LogStatus } from 'src/modules/log/api';
+import { LogAction, LogQueueService, LogStatus } from 'src/modules/log/public-api';
 
 @Injectable()
 export class AdminService {
@@ -959,7 +997,7 @@ Failure logs are never gated on this — they're emitted immediately at the poin
 `diffAuditValues` is a pure function — it returns a plain `{ oldValue, newValue }` object, nothing more. Pass the result straight into the `enqueueAuditLog` call.
 
 ```typescript
-import { diffAuditValues } from 'src/modules/log/api';
+import { diffAuditValues } from 'src/modules/log/public-api';
 
 async updateAdmin(id: string, dto: UpdateAdminDto, adminId: string, request: Request) {
   const before = await this.findById(id);
@@ -1156,6 +1194,14 @@ export class CreateArticleDto {
 export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
 ```
 
+### Pagination, Filtering, and Sorting
+
+For the full list-endpoint convention — accepted query params, currently
+sortable resources, and the recipe for adding sortable fields — see
+[docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md).
+ADR-0010 records the sorting decision (`SortableFilterDto` +
+`resolveSortField`).
+
 ### Pagination DTO — Always Extend This
 
 ```typescript
@@ -1173,6 +1219,44 @@ export class FilterArticleDto extends PaginationFilterDto {
 ```
 
 `PaginationFilterDto` provides: `page` (default 1), `limit` (default 10), and `getAll` (default false — return all rows, bypassing pagination). Do not redefine these. Add resource-specific filters like `search` in the subclass.
+
+### Sortable Filter DTO — Use an Allowlist
+
+Resources that support client-controlled sorting extend `SortableFilterDto`
+instead of `PaginationFilterDto` directly:
+
+```typescript
+import { SortableFilterDto } from 'src/common/dto';
+
+export class FilterArticleDto extends SortableFilterDto {
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+```
+
+`sortBy` is a free-text query param, so never interpolate it directly into
+`.orderBy()`. Every sortable service declares a resource-specific allowlist
+and resolves the effective column with `resolveSortField`:
+
+```typescript
+import { resolveSortField } from 'src/common/utils';
+
+const VALID_SORT_FIELDS: (keyof Article)[] = ['createdAt'];
+
+const orderField = resolveSortField(
+  filter.sortBy,
+  VALID_SORT_FIELDS,
+  'createdAt',
+);
+
+qb.orderBy(`article.${orderField}`, filter.sortOrder ?? 'DESC');
+```
+
+Invalid `sortBy` values silently fall back to the resource default; they do
+not produce `400 Bad Request`. `sortOrder` remains strictly `'ASC' | 'DESC'`.
+Filtering fields such as `search`, `isBanned`, `startDate`, and `endDate` are
+resource-specific and live on the filter DTO.
 
 ### Global String Trimming
 
@@ -1273,12 +1357,12 @@ See §11 for the full pattern as used in `RoleService`.
 
 | Decorator                            | Import From            | Effect                                                                           |
 | ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------- |
-| `@Public()`                          | `src/modules/auth/api` | Bypasses JWT authentication                                                      |
-| `@CurrentUser()`                     | `src/modules/auth/api` | Injects current authenticated user                                               |
-| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`)                         |
+| `@Public()`                          | `src/modules/auth/public-api` | Bypasses JWT authentication                                                      |
+| `@CurrentUser()`                     | `src/modules/auth/public-api` | Injects current authenticated user                                               |
+| `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/public-api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`)                         |
 | `@CheckOwnership()`                  | `src/modules/auth`     | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
 | `@RequireRoles('admin', 'editor')`   | `src/modules/role`     | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
-| `@RequirePermissions({...})`         | `src/modules/role/api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
+| `@RequirePermissions({...})`         | `src/modules/role/public-api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
 
 ### Logging
 
@@ -1475,13 +1559,13 @@ npx forge db reset --prod --yes   # non-interactive, e.g. CI
 
 1. **Never put business logic in a controller.** Controllers call services and return.
 2. **Never access another module's repository directly.** Use that module's exported service.
-3. **Use the right barrel — no deep imports.** Controllers import from `api.ts`. Domain services import services from `api.ts` and entities/events from `index.ts`. No symbol appears in both barrels.
+3. **Use the right barrel — no deep imports.** Controllers import from `public-api.ts`. Domain services import services from `public-api.ts` and entities/events from `index.ts`. No symbol appears in both barrels. Own-module code uses relative direct imports.
 4. **Always extend `BaseEntity`.** No entity without UUID, timestamps, and soft delete.
 5. **Never use `synchronize: true`** in TypeORM config. Always write migrations.
 6. **Never store presigned URLs in the database.** Store the S3 key only.
 7. **Never send emails/SMS synchronously.** Always queue them via `NotificationService`.
 8. **Always validate environment variables.** Add new vars to the Joi schema in `env.validation.ts`.
-9. **Respect module boundaries — they're linted.** `no-restricted-imports` and `import-x/no-cycle` in `eslint.config.mjs` enforce barrel imports and reject circular dependencies. Run `npm run lint`.
+9. **Respect module boundaries — they're linted.** `no-restricted-imports` and `import-x/no-cycle` in `eslint.config.mjs` enforce barrel imports and reject circular dependencies. Barrels are side-effect-free named export manifests only. Run `npm run lint`.
 10. **Never use a native database `enum` type.** Use `varchar` + a TS `enum` + a migration `CHECK` constraint instead (see §9 and ADR-0009).
 
 ### Code Quality Rules
@@ -1549,7 +1633,7 @@ const [admins, total] = await this.adminRepository
   .getManyAndCount();
 ```
 
-Use `relations: [...]` for a simple lookup by id; use `createQueryBuilder` + `leftJoinAndSelect` once filtering, pagination, ordering, or multi-level relations are involved. Always paginate list endpoints via `PaginationFilterDto` (`skip`/`take`, `getAll` opt-out — see §14); don't hand-roll a second pagination shape.
+Use `relations: [...]` for a simple lookup by id; use `createQueryBuilder` + `leftJoinAndSelect` once filtering, pagination, ordering, or multi-level relations are involved. Always paginate list endpoints via `PaginationFilterDto`/`SortableFilterDto` (`skip`/`take`, `getAll` opt-out — see §14 and [docs/pagination-filtering-sorting.md](docs/pagination-filtering-sorting.md)); don't hand-roll a second pagination shape.
 
 Never set `eager: true` on a relation — always load relations explicitly (`relations:`/`leftJoinAndSelect`) so each call site controls its own query cost instead of paying for a join it doesn't need.
 
@@ -1611,11 +1695,14 @@ Never perform blocking or CPU-heavy work synchronously in the request path — i
 | Mistake                                                                  | Correct Approach                                                                                                 |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | Writing audit/activity logs synchronously from a controller              | Call `LogQueueService.enqueueActivityLog()`/`enqueueAuditLog()` from the service, only after the write succeeds  |
-| Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `api.ts`                                               |
-| Domain service importing an entity or event from `api.ts`                | Entities and events live in `index.ts` — `api.ts` has no entities                                                |
-| Domain service importing a service from `index.ts`                       | Services live in `api.ts` — use `import { FooService } from 'src/modules/foo/api'`                               |
-| Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `api.ts`; module class/entities/events → `index.ts` |
-| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `api.ts` for services/DTOs, `index.ts` for entities/events                       |
+| Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `public-api.ts`                                               |
+| Domain service importing an entity or event from `public-api.ts`                | Entities and events live in `index.ts` — `public-api.ts` has no entities                                                |
+| Domain service importing a service from `index.ts`                       | Services live in `public-api.ts` — use `import { FooService } from 'src/modules/foo/public-api'`                               |
+| Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `public-api.ts`; module class/entities/events → `index.ts` |
+| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `public-api.ts` for services/DTOs, `index.ts` for entities/events                       |
+| Using wildcard exports in a barrel (`export * from ...`)                 | Use named exports only so public API growth is explicit                                                          |
+| Importing a module's own barrel from inside that same module             | Use relative direct imports (`../entities/user.entity`) to avoid self-cycles                                      |
+| Adding nested domain barrels (`dto/index.ts`, `services/index.ts`)        | Only module-root `index.ts`/`public-api.ts` are domain boundary barrels                                                  |
 | Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                         |
 | Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                      |
 | Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                  |
@@ -1639,7 +1726,7 @@ Follow this checklist when creating a new domain module (example: `article`).
 mkdir -p src/modules/article/{dto,entities,services}
 touch src/modules/article/article.module.ts
 touch src/modules/article/index.ts
-touch src/modules/article/api.ts
+touch src/modules/article/public-api.ts
 ```
 
 ### Step 2 — Create the Entity
@@ -1758,14 +1845,14 @@ export class ArticleModule {}
 // src/modules/article/index.ts
 export { ArticleModule } from './article.module'; // for app.module.ts imports
 export { Article } from './entities/article.entity'; // entity type for other domain services
-// No ArticleService — services live in api.ts
-// No DTOs — DTOs live in api.ts
+// No ArticleService — services live in public-api.ts
+// No DTOs — DTOs live in public-api.ts
 ```
 
-**`api.ts`** — services, DTOs, and route decorators only (no module class, no entities):
+**`public-api.ts`** — services, DTOs, and route decorators only (no module class, no entities):
 
 ```typescript
-// src/modules/article/api.ts
+// src/modules/article/public-api.ts
 export { ArticleService } from './services/article.service';
 export { CreateArticleDto } from './dto/create-article.dto';
 export { UpdateArticleDto } from './dto/update-article.dto';
@@ -1792,7 +1879,7 @@ import {
   ArticleService,
   CreateArticleDto,
   UpdateArticleDto,
-} from 'src/modules/article/api';
+} from 'src/modules/article/public-api';
 import { RequireRoles, RolesGuard } from 'src/modules/role';
 
 @Controller({ path: 'admin/articles', version: '1' }) // → /api/v1/admin/articles
@@ -1910,8 +1997,8 @@ These gates run alongside the module-boundary linting already described in §5 (
 ```
 Adding a module?        Follow the 10-step checklist in Section 21.
 New endpoint?           Controller calls service. Zero logic in controller.
-Writing a controller?   Import services/DTOs/decorators from api.ts only.
-Need another service?   Import it from api.ts — services live there, not index.ts.
+Writing a controller?   Import services/DTOs/decorators from public-api.ts only.
+Need another service?   Import it from public-api.ts — services live there, not index.ts.
 Need an entity/event?   Import from index.ts — entities and events live there.
 DB change?              Edit entity → forge db migrate generate <Name> → forge db migrate run.
 Send email/SMS?         Queue it via NotificationService. Never send inline.

@@ -5,7 +5,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { LoginProvider } from 'src/modules/user/api';
+import { LoginProvider } from 'src/modules/user/public-api';
 
 export class OAuthLoginPayload {
   @IsString()

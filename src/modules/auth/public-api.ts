@@ -1,3 +1,5 @@
+/** @lintignore Public route decorator; exported for ownership-guarded controllers. */
+export { CheckOwnership } from './decorators/check-ownership.decorator';
 export { CurrentUser } from './decorators/current-user.decorator';
 export { Public } from './decorators/public.decorator';
 export { RequireSubject } from './decorators/require-subject.decorator';

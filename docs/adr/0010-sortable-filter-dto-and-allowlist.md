@@ -46,6 +46,10 @@ concern worth solving once, not five times.
 - `sortOrder` remains strictly `'ASC' | 'DESC'` (`@IsIn`, case-sensitive) —
   lowercase input is rejected by class-validator like any other DTO field,
   consistent with existing behavior.
+- `docs/pagination-filtering-sorting.md` is the operational guide for list
+  endpoint query conventions. ADR-0010 records the architectural decision;
+  that guide records the day-to-day recipe, the currently sortable resources,
+  and the rules for adding new sortable fields.
 
 ## Alternatives considered
 

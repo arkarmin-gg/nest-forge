@@ -18,19 +18,19 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { ResolvePresignedUrls } from 'src/common/decorators';
 import { imageInterceptorOptions } from 'src/common/config';
-import { AuthenticatedUser, CurrentUser } from 'src/modules/auth';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth/public-api';
 import {
   PermissionModule,
   PermissionsGuard,
   RequirePermissions,
-} from 'src/modules/role/api';
+} from 'src/modules/role/public-api';
 import {
   CreateUserDto,
   FilterUserDto,
   LoginProvider,
   UpdateUserDto,
   UserService,
-} from 'src/modules/user/api';
+} from 'src/modules/user/public-api';
 
 @Controller({ path: 'admin/users', version: '1' })
 @UseGuards(PermissionsGuard)

@@ -13,7 +13,7 @@ import {
   LogAction,
   LogQueueService,
   LogStatus,
-} from 'src/modules/log/api';
+} from 'src/modules/log/public-api';
 import { In } from 'typeorm';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { FilterRoleDto } from '../dto/filter-role.dto';

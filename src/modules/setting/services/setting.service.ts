@@ -9,7 +9,7 @@ import {
   LogAction,
   LogQueueService,
   LogStatus,
-} from 'src/modules/log/api';
+} from 'src/modules/log/public-api';
 import { Setting } from '../entities/setting.entity';
 import { CreateSMTPDto } from '../dto/create-smtp-setting.dto';
 import { SMTPResponseDto } from '../dto/smtp-response.dto';

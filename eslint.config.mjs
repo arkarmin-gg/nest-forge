@@ -27,7 +27,7 @@ export default tseslint.config(
   },
   {
     // Enforce module boundary contracts: cross-module imports must go through the
-    // module's barrel (index.ts / api.ts), not via deep internal paths. This prevents
+    // module's barrel (index.ts / public-api.ts), not via deep internal paths. This prevents
     // accidental coupling to internal details.
     files: [
       'src/modules/**/*.ts',
@@ -40,7 +40,7 @@ export default tseslint.config(
         {
           patterns: [
             // ONE rule for ALL modules — no per-module maintenance when adding a new one.
-            // A module's public barrels (`src/modules/<m>`, `.../index`, `.../api`) sit one
+            // A module's public barrels (`src/modules/<m>`, `.../index`, `.../public-api`) sit one
             // level under the module dir and stay importable; anything inside a subdirectory
             // (services/, entities/, dto/, guards/, ...) is a deep import and blocked.
             // Own-module code reaches its internals via RELATIVE paths, which these absolute
@@ -49,7 +49,7 @@ export default tseslint.config(
             {
               group: ['src/modules/*/*/*', 'src/modules/*/*/*/**'],
               message:
-                "Deep import into a module's internals. Import from its barrel instead: 'src/modules/<module>' (index.ts) or 'src/modules/<module>/api'.",
+                "Deep import into a module's internals. Import from its barrel instead: 'src/modules/<module>' (index.ts) or 'src/modules/<module>/public-api'.",
             },
           ],
         },

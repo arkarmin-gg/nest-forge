@@ -279,7 +279,7 @@ Purpose: make the desired architecture easy to create.
   - `src/modules/<name>/dto/`
   - `src/modules/<name>/services/`
   - `src/modules/<name>/index.ts`
-  - `src/modules/<name>/api.ts`
+  - `src/modules/<name>/public-api.ts`
   - optional `src/api/v1/admin/<name>/`
   - optional `src/api/v1/app/<name>/`
   - spec stub under `docs/specs/`

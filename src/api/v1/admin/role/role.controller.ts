@@ -14,8 +14,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { RoleDeletionService } from 'src/modules/admin/api';
-import { AuthenticatedUser, CurrentUser } from 'src/modules/auth';
+import { RoleDeletionService } from 'src/modules/admin/public-api';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth/public-api';
 import {
   CreateRoleDto,
   FilterRoleDto,
@@ -24,7 +24,7 @@ import {
   RequirePermissions,
   RoleService,
   UpdateRoleDto,
-} from 'src/modules/role/api';
+} from 'src/modules/role/public-api';
 
 @Controller({ path: 'admin/roles', version: '1' })
 @UseGuards(PermissionsGuard)

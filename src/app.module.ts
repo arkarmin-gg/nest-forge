@@ -16,13 +16,13 @@ import { HealthModule } from 'src/infrastructure/health/health.module';
 import { NotificationModule } from 'src/infrastructure/notification/notification.module';
 import { AdminModule } from 'src/modules/admin/admin.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
-import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
-import { ActivityLogModule } from 'src/modules/log/activity-log.module';
-import { SettingModule } from 'src/modules/setting/setting.module';
-import { UserModule } from 'src/modules/user/user.module';
+import { JwtAuthGuard } from 'src/modules/auth';
+import { ActivityLogModule } from 'src/modules/log';
+import { SettingModule } from 'src/modules/setting';
+import { UserModule } from 'src/modules/user';
 import { CommonModule } from './common/common.module';
 import { envValidationSchema } from './common/config/env.validation';
-import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { RequestIdMiddleware } from './common/middleware';
 import dataSource from './data-source';
 
 @Module({

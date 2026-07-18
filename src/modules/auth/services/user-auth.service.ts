@@ -15,9 +15,15 @@ import { nowUtc } from 'src/common/utils';
 import { comparePassword } from 'src/common/utils';
 import { buildRequestContext } from 'src/common/utils';
 import { SMSPohService } from 'src/common/services';
-import { LogAction, LogQueueService, LogStatus } from 'src/modules/log/api';
-import type { User } from 'src/modules/user';
-import { LoginProvider, UserService } from 'src/modules/user/api';
+import {
+  LogAction,
+  LogQueueService,
+  LogStatus,
+} from 'src/modules/log/public-api';
+// Type-only entity shape avoids loading the user barrel in auth service exports.
+// eslint-disable-next-line no-restricted-imports
+import type { User } from 'src/modules/user/entities/user.entity';
+import { LoginProvider, UserService } from 'src/modules/user/public-api';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { OAuthLoginPayload } from '../dto/oauth-login-payload.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';

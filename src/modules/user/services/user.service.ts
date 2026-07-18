@@ -18,7 +18,7 @@ import {
   LogAction,
   LogQueueService,
   LogStatus,
-} from 'src/modules/log/api';
+} from 'src/modules/log/public-api';
 import { DeepPartial, FindOptionsWhere, Repository } from 'typeorm';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { FilterUserDto } from '../dto/filter-user.dto';

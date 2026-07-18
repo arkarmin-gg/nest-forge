@@ -19,12 +19,12 @@ import {
   RequireSubject,
   SubjectGuard,
   SubjectType,
-} from 'src/modules/auth/api';
+} from 'src/modules/auth/public-api';
 import {
   UpdateUserProfileDto,
   UserAppResponseDto,
   UserService,
-} from 'src/modules/user/api';
+} from 'src/modules/user/public-api';
 
 /**
  * App zone (USER subject) self-service endpoints.

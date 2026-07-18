@@ -11,14 +11,16 @@ import { Request } from 'express';
 import { FileUploadService } from 'src/common/services';
 import { comparePassword } from 'src/common/utils';
 import { buildRequestContext } from 'src/common/utils';
-import { Admin } from 'src/modules/admin';
-import { AdminService } from 'src/modules/admin/api';
+// Type-only entity shape avoids loading the admin barrel in auth service exports.
+// eslint-disable-next-line no-restricted-imports
+import type { Admin } from 'src/modules/admin/entities/admin.entity';
+import { AdminService } from 'src/modules/admin/public-api';
 import {
   diffAuditValues,
   LogAction,
   LogQueueService,
   LogStatus,
-} from 'src/modules/log/api';
+} from 'src/modules/log/public-api';
 import { AdminLoginDto } from '../dto/admin-login.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';

@@ -1,2 +1,3 @@
-export * from './pagination-filter.dto';
-export * from './sortable-filter.dto';
+/** @lintignore Public DTO barrel export. */
+export { PaginationFilterDto } from './pagination-filter.dto';
+export { SortableFilterDto } from './sortable-filter.dto';

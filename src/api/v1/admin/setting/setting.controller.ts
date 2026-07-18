@@ -9,13 +9,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { AuthenticatedUser, CurrentUser } from 'src/modules/auth';
+import { AuthenticatedUser, CurrentUser } from 'src/modules/auth/public-api';
 import {
   PermissionModule,
   PermissionsGuard,
   RequirePermissions,
-} from 'src/modules/role/api';
-import { CreateSMTPDto, SettingService } from 'src/modules/setting/api';
+} from 'src/modules/role/public-api';
+import { CreateSMTPDto, SettingService } from 'src/modules/setting/public-api';
 
 @Controller({ path: 'admin/settings', version: '1' })
 @UseGuards(PermissionsGuard)

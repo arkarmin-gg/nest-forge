@@ -28,12 +28,14 @@ Each rule: `id` · statement · **category** (Architecture / Standards / Securit
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | -------- | -------------------------------- |
 | **ARCH-01** | A domain service must not inject another module's repository (`@InjectRepository(ForeignEntity)`). Call that module's exported service instead.                                                                              | semantic              | high     | §19 #2 / ADR-0004                |
 | **ARCH-02** | Controllers contain zero business logic — no repository access, `save`, `bcrypt`, branching, or data transformation. They call a service and return.                                                                         | semantic              | high     | §4 Zone 1 / §19 #1               |
-| **ARCH-03** | Controllers import from a module's `api.ts` only — never `index.ts`, never a deep path (`/services/*`, `/dto/*`, `/entities/*`).                                                                                             | mechanical + semantic | high     | §5 / §19 #3                      |
-| **ARCH-04** | Domain services import _services_ from `api.ts` and _entities/events_ from `index.ts`. No symbol from the wrong barrel.                                                                                                      | semantic              | medium   | §5                               |
-| **ARCH-05** | Every domain module under `src/modules/` exposes both `index.ts` and `api.ts`, with no symbol exported from both.                                                                                                            | mechanical            | medium   | §5                               |
+| **ARCH-03** | Controllers import from a module's `public-api.ts` only — never `index.ts`, never a deep path (`/services/*`, `/dto/*`, `/entities/*`).                                                                                             | mechanical + semantic | high     | §5 / §19 #3 / ADR-0013           |
+| **ARCH-04** | Domain services import _services_ from `public-api.ts` and _entities/events_ from `index.ts`. No symbol from the wrong barrel. HTTP DTO reuse across modules requires an intentional service-contract reason.                       | semantic              | medium   | §5 / ADR-0013                    |
+| **ARCH-05** | Every domain module under `src/modules/` exposes both `index.ts` and `public-api.ts`, with no symbol exported from both. Barrels use named exports only, `export type` for type-only symbols, and contain no runtime side effects.   | mechanical            | medium   | §5 / ADR-0013                    |
 | **ARCH-06** | App-zone endpoints (`src/api/v1/app/**`) map the entity to a whitelist response DTO via `plainToInstance(Dto, x, { excludeExtraneousValues: true })` and derive the target from `@CurrentUser()` — never a `:id` path param. | semantic              | high     | §4 / §7 / ADR-0006               |
 | **ARCH-07** | An endpoint restricted to one subject type uses `@UseGuards(SubjectGuard)` + `@RequireSubject('USER'\|'ADMIN')`. The whole `app/` zone is USER-only.                                                                         | semantic              | medium   | §8 / ADR-0006                    |
 | **ARCH-08** | No circular import dependencies between files (e.g. service A → B → A through barrels). `*.entity.ts` files are exempt — bidirectional TypeORM relations form intentional, lazily-resolved cycles.                           | mechanical            | medium   | §5 (Automated Enforcement) / §20 |
+| **ARCH-09** | Barrel files exist only at sanctioned boundaries: `src/modules/*/{index,public-api}.ts` and `src/common/*/index.ts`. No nested domain barrels (`dto/index.ts`, `services/index.ts`) and no `src/common/index.ts` mega-barrel. | mechanical            | medium   | §5 / ADR-0013                    |
+| **ARCH-10** | A module's own implementation files must not import from that same module's root barrel (`src/modules/<same>` or `src/modules/<same>/public-api`). Use relative direct imports inside the owning module.                     | mechanical + semantic | medium   | §5 / ADR-0013                    |
 
 ## Standards
 
@@ -45,7 +47,7 @@ Each rule: `id` · statement · **category** (Architecture / Standards / Securit
 | **STD-04** | Sensitive columns (passwords, secrets) carry `@Exclude()` and `{ select: false }`.                                                                                                                                                                                         | semantic              | high     | §9 / §19 security |
 | **STD-05** | No `console.log` in `src/` (seeders/tests excepted). Use `Logger` from `@nestjs/common`.                                                                                                                                                                                   | mechanical            | low      | §19               |
 | **STD-06** | Injected deps are `readonly`; service methods have explicit return types.                                                                                                                                                                                                  | semantic              | low      | §19 code quality  |
-| **STD-07** | Update DTOs use `PartialType(CreateDto)`; list/filter DTOs extend `PaginationFilterDto` (don't redefine `page`/`limit`/`getAll`).                                                                                                                                          | semantic              | low      | §14               |
+| **STD-07** | Update DTOs use `PartialType(CreateDto)`. List/filter DTOs extend `PaginationFilterDto` or `SortableFilterDto` (don't redefine `page`/`limit`/`getAll`). Sortable services use `resolveSortField` with a resource-specific `VALID_SORT_FIELDS` allowlist before `.orderBy()`. | semantic              | medium   | §14 / ADR-0010 / docs/pagination-filtering-sorting.md |
 | **STD-08** | Never `synchronize: true` in TypeORM config. Schema changes go through migrations.                                                                                                                                                                                         | mechanical            | high     | §9 / §19 #5       |
 | **STD-09** | `@LogActivity` only on authenticated endpoints. `@Public()` endpoints emit `ActivityLogEvent`/`AuditLogEvent` from the service instead (no `request.user` pre-auth).                                                                                                       | semantic              | medium   | §11 / §20         |
 | **STD-10** | Multi-write operations are wrapped in `@Transactional()`; the class injects `TransactionHost<TransactionalAdapterTypeOrm>` and performs all DB access via `this.txHost.tx` (never `@InjectRepository`/`@InjectDataSource`, which bypass the active transaction).           | semantic              | medium   | §15 / ADR-0008    |
@@ -100,8 +102,14 @@ grep -rL "extends BaseEntity\|extends BaseEntity" src/modules/**/entities/*.enti
 # ARCH-05 — every module has both barrels (a module missing either is a violation)
 for d in src/modules/*/; do
   [ -f "$d/index.ts" ] || echo "missing index.ts: $d"
-  [ -f "$d/api.ts" ]   || echo "missing api.ts: $d"
+  [ -f "$d/public-api.ts" ]   || echo "missing public-api.ts: $d"
 done
+
+# ARCH-05 — wildcard exports in sanctioned barrels (should be named exports only)
+grep -rnE "export[[:space:]]+\\*" src/modules/*/index.ts src/modules/*/public-api.ts src/common/*/index.ts
+
+# ARCH-09 — unsanctioned barrels (review hits; module root barrels and common subfolder barrels are allowed)
+find src/modules src/common -path "src/modules/*/index.ts" -prune -o -path "src/modules/*/public-api.ts" -prune -o -path "src/common/*/index.ts" -prune -o -name "index.ts" -print
 
 # ARCH-01 candidates — @InjectRepository inside a service (review: is the entity from another module?)
 grep -rn "@InjectRepository" src/modules/*/services --include="*.ts"

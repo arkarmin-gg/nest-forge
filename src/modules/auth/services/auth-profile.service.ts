@@ -1,7 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Request } from 'express';
-import type { Admin } from 'src/modules/admin';
-import type { User } from 'src/modules/user';
+// Type-only entity shapes avoid loading module barrels in auth service exports.
+// eslint-disable-next-line no-restricted-imports
+import type { Admin } from 'src/modules/admin/entities/admin.entity';
+// eslint-disable-next-line no-restricted-imports
+import type { User } from 'src/modules/user/entities/user.entity';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import type { AuthenticatedUser } from '../interfaces/user.interface';

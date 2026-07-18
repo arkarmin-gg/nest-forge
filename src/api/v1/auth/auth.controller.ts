@@ -39,7 +39,7 @@ import {
   UserRegisterOTPVerifyDto,
   UserRegisterPasswordSetupDto,
   VerifyPasswordResetOTPCodeDto,
-} from 'src/modules/auth/api';
+} from 'src/modules/auth/public-api';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {

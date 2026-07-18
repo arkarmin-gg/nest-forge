@@ -67,7 +67,7 @@ reading every file in the module.
 - No new barrel: `enums/`, `interfaces/`, `constants/` do **not** get their own
   `index.ts`. Files are imported by direct relative path
   (`from '../enums/log-status.enum'`), same as before the split. The
-  module-root `index.ts`/`api.ts` remains the only real barrel boundary (see
+  module-root `index.ts`/`public-api.ts` remains the only real barrel boundary (see
   §5's two-barrel rule) — adding a second layer of barrels here would be
   indirection with no consumer-facing benefit, since nothing outside the
   module imports these files directly anyway (the existing

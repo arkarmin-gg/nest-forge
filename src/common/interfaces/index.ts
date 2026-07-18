@@ -1,2 +1,7 @@
-export * from './api-response.interface';
-export * from './parsed-user-agent.interface';
+export type {
+  ApiResponse,
+  ErrorResponse,
+  ResponseMeta,
+} from './api-response.interface';
+/** @lintignore Public interface barrel export. */
+export type { ParsedUserAgent } from './parsed-user-agent.interface';
