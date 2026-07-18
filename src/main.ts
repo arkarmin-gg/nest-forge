@@ -28,7 +28,7 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
-  const isProduction = configService.get('NODE_ENV') === 'production';
+  const isProduction = configService.getOrThrow<boolean>('app.isProduction');
 
   // Security headers with Helmet — CSP enabled with sensible defaults
   // For Swagger UI in development, 'unsafe-inline' is needed for scripts/styles
@@ -49,7 +49,7 @@ async function bootstrap() {
   );
 
   // Environment-based CORS configuration
-  const envOriginsRaw = configService.get<string>('CORS_ORIGINS');
+  const envOriginsRaw = configService.get<string>('cors.origins');
   let origins: string[] | boolean = [];
 
   const bootstrapLogger = new Logger('Bootstrap');
@@ -130,14 +130,16 @@ async function bootstrap() {
   // Enable graceful shutdown — triggers OnModuleDestroy across all modules
   app.enableShutdownHooks();
 
-  const port = configService.get<number>('PORT', 3000);
+  const port = configService.getOrThrow<number>('app.port');
   const server = (await app.listen(port)) as Server;
 
   bootstrapLogger.log(`Application is running on port ${port}`);
   bootstrapLogger.log(
-    `Environment: ${configService.get('NODE_ENV', 'development')}`,
+    `Environment: ${configService.getOrThrow<string>('app.nodeEnv')}`,
   );
-  bootstrapLogger.log(`TZ: ${configService.get('TZ', 'UTC')}`);
+  bootstrapLogger.log(
+    `TZ: ${configService.getOrThrow<string>('app.timezone')}`,
+  );
 
   // Graceful shutdown on SIGTERM (container restarts, PM2 reloads)
   process.on('SIGTERM', () => {

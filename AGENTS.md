@@ -22,8 +22,8 @@ Procedure (identical regardless of tool):
      `git diff --name-only "$(git merge-base HEAD main)"...HEAD -- 'src/**/*.ts'`
    - _Audit_: the whole `src/` tree.
 2. **Run the mechanical checks** in the rubric's _Mechanical command appendix_
-   (`npx eslint` without `--fix`, `npx tsc --noEmit`, `npm run knip`, the greps). Capture the
-   output; don't re-derive these by reading code.
+   (`npx eslint` without `--fix`, `npx tsc --noEmit`, `npm run build`, `npm run knip`,
+   the greps). Capture the output; don't re-derive these by reading code.
 3. **Reason over the semantic rules** in the rubric, scoped to the file set — the rules a
    linter can't catch (cross-module repo injection, business logic in controllers, wrong
    barrel imports, missing whitelist DTOs, etc.).

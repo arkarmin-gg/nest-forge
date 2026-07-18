@@ -83,13 +83,11 @@ export class UserAuthService {
     return {
       accessToken,
       refreshToken,
-      accessTokenExpiresAt: this.configService.get<number>(
-        'JWT_EXPIRATION',
-        900000,
+      accessTokenExpiresAt: this.configService.getOrThrow<number>(
+        'jwt.accessTokenTtlSeconds',
       ),
-      refreshTokenExpiresAt: this.configService.get<number>(
-        'JWT_REFRESH_EXPIRATION',
-        2592000000,
+      refreshTokenExpiresAt: this.configService.getOrThrow<number>(
+        'jwt.refreshTokenTtlSeconds',
       ),
       user: { id: user.id },
     };

@@ -21,7 +21,19 @@ import { ActivityLogModule } from 'src/modules/log';
 import { SettingModule } from 'src/modules/setting';
 import { UserModule } from 'src/modules/user';
 import { CommonModule } from './common/common.module';
-import { envValidationSchema } from './common/config/env.validation';
+import {
+  appConfig,
+  authConfig,
+  corsConfig,
+  databaseConfig,
+  jwtConfig,
+  otpConfig,
+  redisConfig,
+  s3Config,
+  seedConfig,
+  smsConfig,
+  validateEnv,
+} from './common/config';
 import { RequestIdMiddleware } from './common/middleware';
 import dataSource from './data-source';
 
@@ -41,18 +53,28 @@ import dataSource from './data-source';
     }),
     ConfigModule.forRoot({
       isGlobal: true,
-      validationSchema: envValidationSchema,
-      validationOptions: {
-        abortEarly: false,
-      },
+      load: [
+        appConfig,
+        authConfig,
+        corsConfig,
+        databaseConfig,
+        jwtConfig,
+        otpConfig,
+        redisConfig,
+        s3Config,
+        seedConfig,
+        smsConfig,
+      ],
+      validate: validateEnv,
+      validatePredefined: false,
     }),
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         stores: [
           createKeyv({
-            url: `redis://${configService.get('REDIS_HOST', 'localhost')}:${configService.get('REDIS_PORT', 6379)}`,
+            url: `redis://${configService.getOrThrow<string>('redis.host')}:${configService.getOrThrow<number>('redis.port')}`,
           }),
         ],
         ttl: 600 * 1000,

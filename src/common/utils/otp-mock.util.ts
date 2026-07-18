@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 
-export const DEFAULT_MOCK_OTP_CODE = '123456';
+export const DEFAULT_MOCK_OTP_CODE = '000000';
 
 function parseBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {
@@ -21,16 +21,16 @@ function parseBoolean(value: unknown): boolean | undefined {
 }
 
 export function isOtpMockEnabled(config: ConfigService): boolean {
-  const explicitOtpMock = parseBoolean(config.get('OTP_MOCK_ENABLED'));
+  const explicitOtpMock = parseBoolean(config.get('otp.mockEnabled'));
   if (explicitOtpMock !== undefined) {
     return explicitOtpMock;
   }
 
-  if (config.get<string>('NODE_ENV', 'development') === 'development') {
+  if (config.get<string>('app.nodeEnv', 'development') === 'development') {
     return true;
   }
 
-  const explicitSmsMock = parseBoolean(config.get('SMS_MOCK_ENABLED'));
+  const explicitSmsMock = parseBoolean(config.get('sms.mockEnabled'));
   if (explicitSmsMock !== undefined) {
     return explicitSmsMock;
   }
@@ -39,5 +39,5 @@ export function isOtpMockEnabled(config: ConfigService): boolean {
 }
 
 export function getMockOtpCode(config: ConfigService): string {
-  return config.get<string>('MOCK_OTP_CODE') || DEFAULT_MOCK_OTP_CODE;
+  return config.get<string>('otp.mockCode') || DEFAULT_MOCK_OTP_CODE;
 }

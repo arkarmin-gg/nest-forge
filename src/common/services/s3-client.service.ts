@@ -6,37 +6,53 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getKeyFromPresignedUrl } from '../utils';
 
 @Injectable()
 export class S3ClientService {
   private readonly logger = new Logger(S3ClientService.name);
-  private readonly s3Client: S3Client;
-  private readonly bucketName: string;
+  private readonly s3Client: S3Client | null;
+  private readonly bucketName: string | null;
 
   constructor(private readonly configService: ConfigService) {
-    const AWS_ACCESS_KEY_ID =
-      this.configService.get<string>('AWS_ACCESS_KEY_ID')!;
-    const AWS_SECRET_ACCESS_KEY = this.configService.get<string>(
-      'AWS_SECRET_ACCESS_KEY',
-    )!;
-    const AWS_REGION = this.configService.get<string>('AWS_REGION')!;
-    const AWS_ENDPOINT = this.configService.get<string>('AWS_ENDPOINT')!;
-    const AWS_BUCKET_NAME = this.configService.get<string>('AWS_BUCKET_NAME')!;
+    const isEnabled = this.configService.getOrThrow<boolean>('s3.enabled');
+    if (!isEnabled) {
+      this.s3Client = null;
+      this.bucketName = null;
+      return;
+    }
 
-    this.bucketName = AWS_BUCKET_NAME;
+    const accessKeyId = this.configService.getOrThrow<string>('s3.accessKeyId');
+    const secretAccessKey =
+      this.configService.getOrThrow<string>('s3.secretAccessKey');
+    const region = this.configService.getOrThrow<string>('s3.region');
+    const endpoint = this.configService.get<string>('s3.endpoint');
+
+    this.bucketName = this.configService.getOrThrow<string>('s3.bucketName');
 
     this.s3Client = new S3Client({
-      region: AWS_REGION,
-      endpoint: AWS_ENDPOINT,
+      region,
+      endpoint,
       credentials: {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        accessKeyId,
+        secretAccessKey,
       },
       forcePathStyle: true,
     });
+  }
+
+  private getClient(): { s3Client: S3Client; bucketName: string } {
+    if (!this.s3Client || !this.bucketName) {
+      throw new InternalServerErrorException('S3 storage is not configured');
+    }
+
+    return { s3Client: this.s3Client, bucketName: this.bucketName };
   }
 
   /**
@@ -50,12 +66,13 @@ export class S3ClientService {
       if (!key || key.trim().length === 0) {
         return null;
       }
+      const { s3Client, bucketName } = this.getClient();
       const command = new GetObjectCommand({
-        Bucket: this.bucketName,
+        Bucket: bucketName,
         Key: key,
       });
 
-      const url = await getSignedUrl(this.s3Client, command, { expiresIn });
+      const url = await getSignedUrl(s3Client, command, { expiresIn });
 
       return url;
     } catch (error: unknown) {
@@ -78,12 +95,13 @@ export class S3ClientService {
       if (!key || key.trim().length === 0) {
         return false;
       }
+      const { s3Client, bucketName } = this.getClient();
       const command = new HeadObjectCommand({
-        Bucket: this.bucketName,
+        Bucket: bucketName,
         Key: key,
       });
 
-      await this.s3Client.send(command);
+      await s3Client.send(command);
       return true;
     } catch (error) {
       const err = error as Error;
@@ -114,15 +132,16 @@ export class S3ClientService {
     metadata?: Record<string, string>;
   }): Promise<{ success: boolean; key?: string; error?: string }> {
     try {
+      const { s3Client, bucketName } = this.getClient();
       const command = new PutObjectCommand({
-        Bucket: this.bucketName,
+        Bucket: bucketName,
         Key: `${path}/${key}`,
         Body: body,
         ContentType: contentType,
         Metadata: metadata,
       });
 
-      await this.s3Client.send(command);
+      await s3Client.send(command);
 
       this.logger.log(`Successfully uploaded file: ${key}`);
       return { success: true, key: `${path}/${key}` };
@@ -167,15 +186,16 @@ export class S3ClientService {
     }
 
     try {
+      const { s3Client, bucketName } = this.getClient();
       const command = new PutObjectCommand({
-        Bucket: this.bucketName,
+        Bucket: bucketName,
         Key: newKey,
         Body: body,
         ContentType: contentType,
         Metadata: metadata,
       });
 
-      await this.s3Client.send(command);
+      await s3Client.send(command);
       this.logger.log(`Successfully updated file: ${key}`);
       // Delete old data
       await this.deleteObject(oldKey);
@@ -208,12 +228,13 @@ export class S3ClientService {
       if (!key || key.trim().length === 0) {
         return { success: false, error: 'Key is empty' };
       }
+      const { s3Client, bucketName } = this.getClient();
       const command = new DeleteObjectCommand({
-        Bucket: this.bucketName,
+        Bucket: bucketName,
         Key: key,
       });
 
-      await this.s3Client.send(command);
+      await s3Client.send(command);
 
       this.logger.log(`Successfully deleted file: ${key}`);
       return { success: true };
@@ -228,6 +249,10 @@ export class S3ClientService {
   }
 
   getKeyFromPresignedUrl(url: string): string | null {
+    if (!this.bucketName) {
+      return null;
+    }
+
     return getKeyFromPresignedUrl(url, this.bucketName);
   }
 }

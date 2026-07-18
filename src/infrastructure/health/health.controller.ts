@@ -42,7 +42,7 @@ export class HealthController {
     return {
       ...result,
       version,
-      appName: this.configService.get<string>('APP_NAME'),
+      appName: this.configService.getOrThrow<string>('app.name'),
     };
   }
 }

@@ -80,16 +80,19 @@ Required values:
 
 - `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
 - `JWT_SECRET`, `JWT_REFRESH_SECRET`
+- `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD`
+- `SEED_SMTP_FROM_NAME`, `SEED_SMTP_USERNAME`
 
 Optional foundation integrations:
 
-- Redis (also backs BullMQ queues): `REDIS_HOST`, `REDIS_PORT`
-- S3-compatible storage: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_ENDPOINT`, `AWS_REGION`, `AWS_BUCKET_NAME`
-- SMTP seed defaults: `SMTP_FROM_NAME`, `SMTP_USERNAME`,
-  `SMTP_USER_PASSWORD`
+- Redis (also backs BullMQ queues): `REDIS_HOST`, `REDIS_PORT`,
+  `REDIS_PREFIX_KEY`
+- S3-compatible storage: `S3_ENABLED`, `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT`, `AWS_REGION`, `AWS_BUCKET_NAME`
+- SMTP seed password: `SEED_SMTP_PASSWORD`
 - SMS provider: `SMS_POH_API_KEY`, `SMS_POH_API_SECRET_KEY`,
-  `SMS_POH_BASE_API_URL`, `SMS_POH_API_BRAND`, `SMS_POH_API_SENDER_ID`
+  `SMS_POH_BASE_API_URL`, `SMS_POH_API_BRAND`, `SMS_POH_API_SENDER_ID`,
+  `SMS_POH_ENABLED`
 - Local OTP/SMS mocks: `OTP_MOCK_ENABLED`, `OTP_MOCK_CODE`,
   `SMS_MOCK_ENABLED`
 
@@ -104,6 +107,9 @@ npm run typecheck       # tsc --noEmit
 npm test                # unit tests
 npm run test:e2e        # e2e tests
 ```
+
+Before pushing, run the quality-gate checks: `npm run lint:check`,
+`npm run typecheck`, `npm run build`, and the relevant tests.
 
 ## Database & Migrations
 

@@ -71,7 +71,7 @@ export class PasswordResetService {
         admin.email,
         code,
         admin.fullName,
-        this.configService.get<string>('SMTP_FROM_NAME', ''),
+        this.configService.getOrThrow<string>('seed.smtp.fromName'),
         10,
       ),
     );

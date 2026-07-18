@@ -29,10 +29,11 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: configService.getOrThrow<string>('jwt.secret'),
         signOptions: {
-          // Default: 15 minutes (900000ms). Override via JWT_EXPIRATION env var.
-          expiresIn: configService.get<number>('JWT_EXPIRATION', 900000),
+          expiresIn: configService.getOrThrow<number>(
+            'jwt.accessTokenTtlSeconds',
+          ),
         },
       }),
       inject: [ConfigService],

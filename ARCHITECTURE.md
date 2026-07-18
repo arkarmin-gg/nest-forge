@@ -326,11 +326,11 @@ modules/
 
 Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `public-api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home. These barrels are architectural boundary contracts, not shortcuts for avoiding relative paths inside a module (see ADR-0013).
 
-|                   | `index.ts`                                                                  | `public-api.ts`                                            |
-| ----------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
+|                   | `index.ts`                                                                  | `public-api.ts`                                                                       |
+| ----------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | **Used by**       | Other domain modules, `app.module.ts`                                       | Controllers in `src/api/v1/`; domain services calling another module's public service |
-| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | Services, DTOs, decorators for routes, controller-facing types |
-| **Never exports** | DTOs, route decorators, route guards                                        | Module class, entities, events, internal interfaces |
+| **Exports**       | Module class, entities, events, domain interfaces, guards used as providers | Services, DTOs, decorators for routes, controller-facing types                        |
+| **Never exports** | DTOs, route decorators, route guards                                        | Module class, entities, events, internal interfaces                                   |
 
 **`index.ts` — Module wiring and domain types**
 
@@ -361,7 +361,10 @@ export { FilterArticleDto } from './dto/filter-article.dto';
 ```typescript
 // ✅ Controller importing — always use public-api.ts
 // src/api/v1/article/article.controller.ts
-import { ArticleService, CreateArticleDto } from 'src/modules/article/public-api';
+import {
+  ArticleService,
+  CreateArticleDto,
+} from 'src/modules/article/public-api';
 
 // ✅ Domain service calling another module's service — use public-api.ts (services live there)
 // src/modules/workflow/services/workflow.service.ts
@@ -674,13 +677,13 @@ create(@Body() dto: CreateAdminDto) { ... }
 
 The system has two distinct authenticated subjects. **Always check `subjectType`** when authorization depends on it.
 
-| Property        | User                     | Admin                    |
-| --------------- | ------------------------ | ------------------------ |
-| `subjectType`   | `'USER'`                 | `'ADMIN'`                |
-| Identifier      | `userId`                 | `adminId`                |
-| Login method    | Phone + Password / OAuth | Email + Password         |
-| Has roles       | No                       | Yes                      |
-| Has permissions | No                       | Yes                      |
+| Property        | User                     | Admin            |
+| --------------- | ------------------------ | ---------------- |
+| `subjectType`   | `'USER'`                 | `'ADMIN'`        |
+| Identifier      | `userId`                 | `adminId`        |
+| Login method    | Phone + Password / OAuth | Email + Password |
+| Has roles       | No                       | Yes              |
+| Has permissions | No                       | Yes              |
 
 ### Restricting an Endpoint to a Subject Type — `@RequireSubject`
 
@@ -916,10 +919,10 @@ async create(dto: CreateAdminDto): Promise<Admin> {
 
 ### Two Types of Logs
 
-| Type            | Table           | Purpose                                              | Who writes it        |
-| --------------- | --------------- | ----------------------------------------------------- | --------------------- |
-| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)   | `LogQueueService`      |
-| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff   | `LogQueueService`      |
+| Type            | Table           | Purpose                                              | Who writes it     |
+| --------------- | --------------- | ---------------------------------------------------- | ----------------- |
+| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes)  | `LogQueueService` |
+| **AuditLog**    | `audit_logs`    | Admin-driven changes with `oldValue`/`newValue` diff | `LogQueueService` |
 
 There is no interceptor and no `@LogActivity` decorator. Every log write is an explicit call from inside the service method that performs the underlying business operation — never inferred from route metadata, and never triggered from the controller layer.
 
@@ -929,13 +932,22 @@ There is no interceptor and no `@LogActivity` decorator. Every log write is an e
 
 ```typescript
 import { buildRequestContext } from 'src/common/utils';
-import { LogAction, LogQueueService, LogStatus } from 'src/modules/log/public-api';
+import {
+  LogAction,
+  LogQueueService,
+  LogStatus,
+} from 'src/modules/log/public-api';
 
 @Injectable()
 export class AdminService {
   constructor(private readonly logQueueService: LogQueueService) {}
 
-  async update(id: string, dto: UpdateAdminDto, adminId: string, request: Request) {
+  async update(
+    id: string,
+    dto: UpdateAdminDto,
+    adminId: string,
+    request: Request,
+  ) {
     try {
       // ... perform the update ...
 
@@ -1097,7 +1109,7 @@ Emails are **never sent synchronously** during a request. They are queued (`EMAI
 `NotificationService` exposes **purpose-specific** methods, not a generic `sendEmail`. The current methods are:
 
 | Method                                 | Channel | Behaviour                                |
-| --------------------------------------- | ------- | ------------------------------------------ |
+| -------------------------------------- | ------- | ---------------------------------------- |
 | `sendForgotPasswordResetCode(payload)` | Email   | Fire-and-forget (queued, returns `void`) |
 
 When adding a new email type, add a method here plus a job handler in `EmailProcessor` — do not call Nodemailer from a request handler.
@@ -1355,13 +1367,13 @@ See §11 for the full pattern as used in `RoleService`.
 
 ### Auth Decorators
 
-| Decorator                            | Import From            | Effect                                                                           |
-| ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------- |
+| Decorator                            | Import From                   | Effect                                                                           |
+| ------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------- |
 | `@Public()`                          | `src/modules/auth/public-api` | Bypasses JWT authentication                                                      |
 | `@CurrentUser()`                     | `src/modules/auth/public-api` | Injects current authenticated user                                               |
 | `@RequireSubject('USER' \| 'ADMIN')` | `src/modules/auth/public-api` | Asserts `subjectType` (needs `@UseGuards(SubjectGuard)`)                         |
-| `@CheckOwnership()`                  | `src/modules/auth`     | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
-| `@RequireRoles('admin', 'editor')`   | `src/modules/role`     | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
+| `@CheckOwnership()`                  | `src/modules/auth`            | Verifies resource belongs to caller (needs `@UseGuards(ResourceOwnershipGuard)`) |
+| `@RequireRoles('admin', 'editor')`   | `src/modules/role`            | Restricts by role name (needs `@UseGuards(RolesGuard)`)                          |
 | `@RequirePermissions({...})`         | `src/modules/role/public-api` | Restricts by specific permission (needs `@UseGuards(PermissionsGuard)`)          |
 
 ### Logging
@@ -1379,7 +1391,24 @@ There is no logging decorator. Activity/audit logs are written by calling `LogQu
 
 ## 17. Environment Variables
 
-Copy `.env.example` to `.env` and fill in all values. The Joi schema in [env.validation.ts](src/common/config/env.validation.ts) is the source of truth — it runs with `allowUnknown: true`, so vars not listed there (e.g. `SMTP_USERNAME`, `SMTP_USER_PASSWORD`) are read directly via `ConfigService` and are not validated. Variables marked **required** below abort startup if missing.
+Copy `.env.example` to `.env` and fill in all values. The Joi schema in
+[env.validation.ts](src/common/config/env.validation.ts) is the source of
+truth, and ADR-0014 records the configuration policy.
+
+Environment variables are a strict application contract:
+
+- Every app env var must be declared in the Joi schema, represented in
+  `.env.example`, and documented here.
+- Unknown variables in the env-file contract abort Nest app startup. Normal shell
+  variables such as `PATH` are not part of that strict check.
+- Runtime code should consume namespaced config keys from `registerAs()` config
+  objects, e.g. `jwt.secret`, `redis.host`, and `seed.superAdmin.email`.
+- Do not read raw `process.env` or raw uppercase env keys in application code.
+  Exceptions are config factories, bootstrap/tooling boundaries, and code paths
+  that cannot receive injected config.
+- Time-based env names must include their unit.
+- Provider credentials are grouped behind explicit toggles. Disabled providers
+  may have blank credentials; enabled providers must have complete credentials.
 
 ```bash
 # App
@@ -1398,11 +1427,11 @@ DB_NAME=nest_forge
 # Auth
 AUTH_PASSWORD_SALT_ROUNDS=10     # bcrypt cost factor (default 10)
 
-# JWT (JWT_SECRET, JWT_REFRESH_SECRET REQUIRED — must be 32+ chars)
+# JWT (secrets REQUIRED — must be 32+ chars and not placeholders)
 JWT_SECRET=your-very-long-secret-here
 JWT_REFRESH_SECRET=another-very-long-secret-here
-JWT_EXPIRATION=900000            # 15 minutes in ms (default)
-JWT_REFRESH_EXPIRATION=2592000000  # 30 days in ms (default)
+JWT_ACCESS_TOKEN_TTL_SECONDS=900       # 15 minutes (default)
+JWT_REFRESH_TOKEN_TTL_SECONDS=2592000  # 30 days (default)
 
 # Redis
 REDIS_HOST=localhost             # default localhost
@@ -1412,25 +1441,26 @@ REDIS_PREFIX_KEY=nest-forge      # BullMQ/cache key prefix (default "nest-forge"
 # CORS (comma-separated origins, or '*'/'all'/'true' for all — dev only)
 CORS_ORIGINS=http://localhost:3000
 
-# Email (SMTP_FROM_NAME is REQUIRED)
-SMTP_FROM_NAME=nest-forge
+# Seed defaults (all required except SEED_SMTP_PASSWORD)
+SEED_SUPER_ADMIN_EMAIL=admin@example.com
+SEED_SUPER_ADMIN_PASSWORD=your-strong-local-password
+SEED_SMTP_FROM_NAME=nest-forge
+SEED_SMTP_USERNAME=noreply@example.com
+SEED_SMTP_PASSWORD=
 
-# AWS S3 (all optional — only needed when file uploads are used)
+# AWS S3 (credentials required only when S3_ENABLED=true)
+S3_ENABLED=false
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=ap-southeast-1
 AWS_BUCKET_NAME=my-project-bucket
 AWS_ENDPOINT=                    # optional custom endpoint (e.g. S3-compatible storage)
 
-# OAuth (optional)
-GOOGLE_CLIENT_ID=...
-APPLE_CLIENT_ID=...
-
 # OTP / SMS
 OTP_MOCK_ENABLED=true            # skip real SMS in dev
 OTP_MOCK_CODE=000000             # 6-digit mock code (default 000000)
-SMS_MOCK_ENABLED=false           # default false
-# SMS provider (Poh) — all optional, required only when sending real SMS:
+SMS_MOCK_ENABLED=true            # default true
+SMS_POH_ENABLED=false            # credentials required when true and SMS_MOCK_ENABLED=false
 SMS_POH_API_KEY=...
 SMS_POH_API_SECRET_KEY=...
 SMS_POH_BASE_API_URL=...
@@ -1471,12 +1501,12 @@ npx forge db --help
 
 **Why a dedicated CLI instead of raw `npm run` / TypeORM CLI scripts?**
 
-| | `forge` CLI |
-| --------------------- | ----------------------------------------------------- |
-| Migration output path | Enforced to `src/infrastructure/database/migrations/` |
-| Naming | Just pass the name: `AddArticleTable` |
-| Discoverability | `forge db --help` lists all sub-commands |
-| Prod safety | `--prod` flag with a confirmation gate on destructive ops |
+|                       | `forge` CLI                                               |
+| --------------------- | --------------------------------------------------------- |
+| Migration output path | Enforced to `src/infrastructure/database/migrations/`     |
+| Naming                | Just pass the name: `AddArticleTable`                     |
+| Discoverability       | `forge db --help` lists all sub-commands                  |
+| Prod safety           | `--prod` flag with a confirmation gate on destructive ops |
 
 See [ADR-0012](docs/adr/0012-forge-cli-as-primary-database-tool.md) for the
 full rationale.
@@ -1615,7 +1645,9 @@ try {
 // ❌ WRONG — one query per admin (N+1)
 const admins = await this.adminRepository.find();
 for (const admin of admins) {
-  admin.role = await this.roleRepository.findOne({ where: { id: admin.roleId } });
+  admin.role = await this.roleRepository.findOne({
+    where: { id: admin.roleId },
+  });
 }
 
 // ✅ Simple lookup by id — use `relations`
@@ -1639,9 +1671,9 @@ Never set `eager: true` on a relation — always load relations explicitly (`rel
 
 Every `@ManyToOne` sets `onDelete` explicitly — never leave it to the TypeORM default. Pick based on ownership:
 
-| Relationship                                          | `onDelete` |
-| ------------------------------------------------------ | ---------- |
-| Owned child record (e.g. `RefreshToken` → `User`)      | `CASCADE`  |
+| Relationship                                            | `onDelete` |
+| ------------------------------------------------------- | ---------- |
+| Owned child record (e.g. `RefreshToken` → `User`)       | `CASCADE`  |
 | Optional/nullable reference (e.g. `AuditLog` → `Admin`) | `SET NULL` |
 | Protected reference data (e.g. `Admin` → `Role`)        | `RESTRICT` |
 
@@ -1665,7 +1697,9 @@ export class ArticleService {
     const cached = await this.cacheManager.get<Article>(this.getKey(id));
     if (cached) return cached;
 
-    const article = await this.articleRepository.findOneOrFail({ where: { id } });
+    const article = await this.articleRepository.findOneOrFail({
+      where: { id },
+    });
     await this.cacheManager.set(this.getKey(id), article, 300 * 1000); // explicit TTL, don't rely on the global default when it doesn't fit
     return article;
   }
@@ -1692,27 +1726,27 @@ Never perform blocking or CPU-heavy work synchronously in the request path — i
 
 ## 20. Common Mistakes to Avoid
 
-| Mistake                                                                  | Correct Approach                                                                                                 |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Writing audit/activity logs synchronously from a controller              | Call `LogQueueService.enqueueActivityLog()`/`enqueueAuditLog()` from the service, only after the write succeeds  |
+| Mistake                                                                  | Correct Approach                                                                                                        |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Writing audit/activity logs synchronously from a controller              | Call `LogQueueService.enqueueActivityLog()`/`enqueueAuditLog()` from the service, only after the write succeeds         |
 | Controller importing from `index.ts`                                     | `index.ts` has no services or DTOs — controllers must use `public-api.ts`                                               |
-| Domain service importing an entity or event from `public-api.ts`                | Entities and events live in `index.ts` — `public-api.ts` has no entities                                                |
-| Domain service importing a service from `index.ts`                       | Services live in `public-api.ts` — use `import { FooService } from 'src/modules/foo/public-api'`                               |
+| Domain service importing an entity or event from `public-api.ts`         | Entities and events live in `index.ts` — `public-api.ts` has no entities                                                |
+| Domain service importing a service from `index.ts`                       | Services live in `public-api.ts` — use `import { FooService } from 'src/modules/foo/public-api'`                        |
 | Re-exporting the same symbol in both barrels                             | Each symbol has exactly one home: services/DTOs/decorators → `public-api.ts`; module class/entities/events → `index.ts` |
 | Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `public-api.ts` for services/DTOs, `index.ts` for entities/events                       |
-| Using wildcard exports in a barrel (`export * from ...`)                 | Use named exports only so public API growth is explicit                                                          |
-| Importing a module's own barrel from inside that same module             | Use relative direct imports (`../entities/user.entity`) to avoid self-cycles                                      |
-| Adding nested domain barrels (`dto/index.ts`, `services/index.ts`)        | Only module-root `index.ts`/`public-api.ts` are domain boundary barrels                                                  |
-| Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                         |
-| Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                      |
-| Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                  |
-| Sending emails inside a request handler                                  | Queue via `NotificationService`                                                                                  |
-| Throwing raw `Error` objects                                             | Throw NestJS `HttpException` subclasses                                                                          |
-| Using `console.log` for debugging                                        | Use `Logger` from `@nestjs/common`                                                                               |
-| Forgetting `@Exclude()` on password fields                               | Always add `@Exclude()` to sensitive columns                                                                     |
-| Writing business logic in a controller                                   | Move all logic to the service                                                                                    |
-| Creating entities without extending `BaseEntity`                         | Always extend `BaseEntity`                                                                                       |
-| Creating a circular import between modules                               | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/`  |
+| Using wildcard exports in a barrel (`export * from ...`)                 | Use named exports only so public API growth is explicit                                                                 |
+| Importing a module's own barrel from inside that same module             | Use relative direct imports (`../entities/user.entity`) to avoid self-cycles                                            |
+| Adding nested domain barrels (`dto/index.ts`, `services/index.ts`)       | Only module-root `index.ts`/`public-api.ts` are domain boundary barrels                                                 |
+| Injecting `UserRepository` in `AuthService`                              | Call `UserService.findByPhone()` instead                                                                                |
+| Calling `synchronize: true` in TypeORM config                            | Generate and run migrations                                                                                             |
+| Storing presigned S3 URLs in the database                                | Store the S3 key; resolve URLs at response time                                                                         |
+| Sending emails inside a request handler                                  | Queue via `NotificationService`                                                                                         |
+| Throwing raw `Error` objects                                             | Throw NestJS `HttpException` subclasses                                                                                 |
+| Using `console.log` for debugging                                        | Use `Logger` from `@nestjs/common`                                                                                      |
+| Forgetting `@Exclude()` on password fields                               | Always add `@Exclude()` to sensitive columns                                                                            |
+| Writing business logic in a controller                                   | Move all logic to the service                                                                                           |
+| Creating entities without extending `BaseEntity`                         | Always extend `BaseEntity`                                                                                              |
+| Creating a circular import between modules                               | Restructure so dependencies flow one way; `import-x/no-cycle` blocks it. Move shared logic up or into `common/`         |
 
 ---
 
@@ -1970,6 +2004,7 @@ Two independent checkpoints enforce code health — one local (fast, staged-file
 
 ```
 npx lint-staged   # Prettier --write + ESLint --fix, staged src/**/*.ts and test/**/*.ts only (.lintstagedrc)
+npm run build     # Nest production build must compile
 npm run knip      # Unused files, exports, and dependencies — full project (knip.json), not just staged files
 ```
 
@@ -1985,10 +2020,10 @@ npm run knip      # Unused files, exports, and dependencies — full project (kn
 ### Rules
 
 - Never bypass these with `--no-verify` or by disabling a script — fix the underlying issue instead.
-- Run `npm run typecheck` locally before pushing; don't rely on CI to be the first place a type error surfaces.
+- Run `npm run typecheck` and `npm run build` locally before pushing; don't rely on CI to be the first place a compile error surfaces.
 - **Handling a knip false positive:** first check whether the file/export is genuinely dead — if so, delete it; don't suppress the finding. Only add an entry to `knip.json`'s ignore config when the symbol is a deliberately-kept public API surface knip can't infer (e.g. exported for an external consumer, referenced dynamically) — and leave a one-line comment at the ignore entry explaining why, so it doesn't read as stale later.
 
-These gates run alongside the module-boundary linting already described in §5 (Automated Enforcement) and the migration discipline in §9 — this section is about *what runs and when*, not a restatement of those rules.
+These gates run alongside the module-boundary linting already described in §5 (Automated Enforcement) and the migration discipline in §9 — this section is about _what runs and when_, not a restatement of those rules.
 
 ---
 

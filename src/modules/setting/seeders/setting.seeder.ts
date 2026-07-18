@@ -37,31 +37,22 @@ export class SettingSeeder {
       },
       {
         key: 'smtp_username',
-        value: this.configService.get<string>(
-          'SMTP_USERNAME',
-          'noreply@example.com',
-        ),
+        value: this.configService.getOrThrow<string>('seed.smtp.username'),
         description: 'Optional SMTP authentication username.',
       },
       {
         key: 'smtp_password',
-        value: this.configService.get<string>(
-          'SMTP_USER_PASSWORD',
-          'your_password',
-        ),
+        value: this.configService.get<string>('seed.smtp.password', ''),
         description: 'Optional SMTP authentication password.',
       },
       {
         key: 'smtp_from_email',
-        value: this.configService.get<string>(
-          'SMTP_USERNAME',
-          'noreply@example.com',
-        ),
+        value: this.configService.getOrThrow<string>('seed.smtp.username'),
         description: 'Default sender email address for outgoing emails.',
       },
       {
         key: 'smtp_from_name',
-        value: this.configService.get<string>('SMTP_FROM_NAME', 'nest-forge'),
+        value: this.configService.getOrThrow<string>('seed.smtp.fromName'),
         description: 'Default sender display name for outgoing emails.',
       },
       {

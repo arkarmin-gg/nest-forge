@@ -24,13 +24,11 @@ export class AdminSeeder {
       throw new Error('Super Admin role must be seeded before admin seeding');
     }
 
-    const email = this.configService.get<string>(
-      'SUPER_ADMIN_EMAIL',
-      'admin@example.com',
+    const email = this.configService.getOrThrow<string>(
+      'seed.superAdmin.email',
     );
-    const password = this.configService.get<string>(
-      'SUPER_ADMIN_PASSWORD',
-      'passwordD123!@#',
+    const password = this.configService.getOrThrow<string>(
+      'seed.superAdmin.password',
     );
     const existing = await this.adminRepository.findOne({ where: { email } });
     if (!existing) {
